@@ -348,6 +348,60 @@
   ::-webkit-scrollbar-track { background: #f0e6dc; }
   ::-webkit-scrollbar-thumb { background: #c8a99a; border-radius: 4px; }
 
+  /* ── 拼貼模式 ── */
+  .collage-mode-btn {
+    margin-top: 14px;
+    width: 100%;
+    background: none;
+    border: 2px dashed var(--accent2);
+    color: var(--accent2);
+    border-radius: 12px;
+    padding: 11px;
+    font-size: 1.1rem;
+    font-family: 'Iansui', 'Noto Serif TC', serif;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s;
+    display: none;
+  }
+  .collage-mode-btn:hover { background: #fff5ec; }
+  .collage-mode-btn.active { background: #fff5ec; border-style: solid; }
+
+  .photo-row.collage-selectable { cursor: pointer; }
+  .photo-row.collage-selected { border-color: var(--accent) !important; background: #fff0e8 !important; }
+  .collage-check {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2.5px solid var(--border); background: #fff;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; color: #fff; transition: background .15s, border-color .15s;
+  }
+  .collage-selected .collage-check { background: var(--accent); border-color: var(--accent); }
+
+  .collage-action-bar {
+    display: none; gap: 10px; margin-top: 12px; align-items: center;
+  }
+  .collage-action-bar.visible { display: flex; }
+  .collage-merge-btn {
+    flex: 1; padding: 12px 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; border: none; border-radius: 12px;
+    font-size: 1.1rem; font-family: 'Iansui','Noto Serif TC',serif;
+    font-weight: 700; cursor: pointer; letter-spacing: 2px;
+  }
+  .collage-merge-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* 拼貼素材列 */
+  .collage-row { background: #fffaf5; }
+  .collage-mini-thumbs { display: flex; gap: 4px; flex-shrink: 0; }
+  .collage-mini-thumb {
+    width: 44px; height: 33px; object-fit: cover;
+    border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  }
+  .collage-badge {
+    font-size: .78rem; background: var(--accent2); color: #fff;
+    border-radius: 4px; padding: 1px 6px; margin-left: 4px;
+  }
+
   /* PWA install overlay */
   .pwa-overlay {
     position: fixed; inset: 0; z-index: 9999;
@@ -402,6 +456,11 @@
       <input type="file" id="photo-input" accept="image/*,video/*" multiple>
     </div>
     <div id="photo-list"></div>
+    <button class="collage-mode-btn" id="collage-mode-btn" onclick="toggleCollageMode()">🖼️ 建立照片拼貼</button>
+    <div class="collage-action-bar" id="collage-action-bar">
+      <button class="collage-merge-btn" id="collage-merge-btn" disabled onclick="createCollage()">請選 2 張以上</button>
+      <button onclick="toggleCollageMode()" style="padding:12px 16px;border:2px solid var(--border);border-radius:12px;background:#fff;color:var(--muted);font-size:1rem;cursor:pointer;">取消</button>
+    </div>
     <p class="hint" id="photo-count-hint" style="display:none"></p>
   </div>
 
@@ -486,10 +545,12 @@ const N8N_STATUS_URL = 'https://n8n.alice55505.dpdns.org/webhook/slideshow-statu
 const CATEGORY_ORDER = ['傳福音','福音','愛','同伴','牧養','奉獻','召會生活','親近主','患難安慰','台語詩歌'];
 // ────────────────────────────────────────────────────
 
-// photos[i] = { type:'photo'|'video', file, dataUrl, name, text, duration(video only) }
+// photos[i] = { type:'photo'|'video'|'collage', ... }
 let photos = [];
 let selectedMusic = null;
 let audioPlayer = null;
+let collageMode = false;
+let collageSelected = new Set();
 let dragSrcIdx = null;
 let introPhotoData = null;
 let outroPhotoData = null;
@@ -557,62 +618,109 @@ function renderPhotoList() {
 
   photos.forEach((p, i) => {
     const row = document.createElement('div');
-    row.className = 'photo-row';
-    row.draggable = true;
     row.dataset.idx = i;
 
-    const isVid = p.type === 'video';
-    const dur = isVid ? Math.round(p.duration) : 4;
-    const thumb = isVid
-      ? `<video class="photo-thumb" src="${p.dataUrl}" muted preload="metadata" style="object-fit:cover;"></video>`
-      : `<img class="photo-thumb" src="${p.dataUrl}" alt="">`;
-    const badge = isVid ? `<span style="font-size:.75rem;background:#333;color:#fff;border-radius:4px;padding:1px 5px;margin-left:4px;">🎬 ${dur}s</span>` : '';
-    row.innerHTML = `
-      <span class="drag-handle" title="拖曳排序">⠿</span>
-      <span class="photo-num">${i + 1}</span>
-      ${thumb}
-      <span class="photo-fname" title="${p.name}">${p.name}${badge}</span>
-      <div class="photo-text-wrap">
-        <input type="text"
-          class="photo-text-input${p.text ? ' has-text' : ''}"
-          placeholder="${isVid ? '✍️  影片上的文字（可不填）' : '✍️  這張照片的文字（可不填）'}"
-          value="${escapeAttr(p.text)}"
-          data-idx="${i}">
-      </div>
-      <button class="photo-del" title="刪除" data-idx="${i}">✕</button>
-    `;
+    if (p.type === 'collage') {
+      // ── 拼貼素材列 ──
+      row.className = 'photo-row collage-row';
+      row.draggable = true;
+      const miniThumbs = p.items.map(it =>
+        `<img class="collage-mini-thumb" src="${it.dataUrl}" alt="">`
+      ).join('');
+      row.innerHTML = `
+        <span class="drag-handle" title="拖曳排序">⠿</span>
+        <span class="photo-num">${i + 1}</span>
+        <div class="collage-mini-thumbs">${miniThumbs}</div>
+        <span class="photo-fname">拼貼<span class="collage-badge">${p.items.length}張</span></span>
+        <div class="photo-text-wrap">
+          <input type="text"
+            class="photo-text-input${p.text ? ' has-text' : ''}"
+            placeholder="✍️  拼貼上的文字（可不填）"
+            value="${escapeAttr(p.text)}"
+            data-idx="${i}">
+        </div>
+        <button class="photo-del" title="拆開拼貼" data-idx="${i}" title="拆開">⊞</button>
+      `;
+      row.querySelector('.photo-text-input').addEventListener('input', function() {
+        photos[this.dataset.idx].text = this.value;
+        this.classList.toggle('has-text', this.value.trim().length > 0);
+        updateSummary();
+      });
+      // 拆開拼貼
+      row.querySelector('.photo-del').addEventListener('click', function(e) {
+        e.stopPropagation();
+        const ci = +this.dataset.idx;
+        const items = photos[ci].items.map(it => ({ type: 'photo', file: it.file, dataUrl: it.dataUrl, name: it.name, text: '' }));
+        photos.splice(ci, 1, ...items);
+        renderPhotoList(); updateSummary(); checkReady();
+      });
 
-    // 文字輸入即時更新
-    row.querySelector('.photo-text-input').addEventListener('input', function() {
-      photos[this.dataset.idx].text = this.value;
-      this.classList.toggle('has-text', this.value.trim().length > 0);
-      updateSummary();
-    });
+    } else {
+      // ── 一般照片/影片列 ──
+      const isVid = p.type === 'video';
+      const dur = isVid ? Math.round(p.duration) : 4;
+      const thumb = isVid
+        ? `<video class="photo-thumb" src="${p.dataUrl}" muted preload="metadata" style="object-fit:cover;"></video>`
+        : `<img class="photo-thumb" src="${p.dataUrl}" alt="">`;
+      const badge = isVid ? `<span style="font-size:.75rem;background:#333;color:#fff;border-radius:4px;padding:1px 5px;margin-left:4px;">🎬 ${dur}s</span>` : '';
+      const isSelected = collageMode && collageSelected.has(i);
+      const selectable = collageMode && !isVid;
+      row.className = 'photo-row' + (selectable ? ' collage-selectable' : '') + (isSelected ? ' collage-selected' : '');
+      row.draggable = !collageMode;
+      row.innerHTML = `
+        ${collageMode && !isVid ? `<div class="collage-check">${isSelected ? '✓' : ''}</div>` : '<span class="drag-handle" title="拖曳排序">⠿</span>'}
+        <span class="photo-num">${i + 1}</span>
+        ${thumb}
+        <span class="photo-fname" title="${p.name}">${p.name}${badge}</span>
+        <div class="photo-text-wrap">
+          <input type="text"
+            class="photo-text-input${p.text ? ' has-text' : ''}"
+            placeholder="${isVid ? '✍️  影片上的文字（可不填）' : '✍️  這張照片的文字（可不填）'}"
+            value="${escapeAttr(p.text)}"
+            data-idx="${i}">
+        </div>
+        <button class="photo-del" title="刪除" data-idx="${i}">✕</button>
+      `;
 
-    // 刪除
-    row.querySelector('.photo-del').addEventListener('click', function(e) {
-      e.stopPropagation();
-      photos.splice(+this.dataset.idx, 1);
-      renderPhotoList();
-    });
+      row.querySelector('.photo-text-input').addEventListener('input', function() {
+        photos[this.dataset.idx].text = this.value;
+        this.classList.toggle('has-text', this.value.trim().length > 0);
+        updateSummary();
+      });
+      row.querySelector('.photo-del').addEventListener('click', function(e) {
+        e.stopPropagation();
+        photos.splice(+this.dataset.idx, 1);
+        renderPhotoList(); updateSummary(); checkReady();
+      });
 
-    // 拖曳排序
-    row.addEventListener('dragstart', () => {
-      dragSrcIdx = i;
-      setTimeout(() => row.classList.add('dragging'), 0);
-    });
-    row.addEventListener('dragend', () => row.classList.remove('dragging'));
-    row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over-top'); });
-    row.addEventListener('dragleave', () => row.classList.remove('drag-over-top'));
-    row.addEventListener('drop', e => {
-      e.preventDefault();
-      row.classList.remove('drag-over-top');
-      if (dragSrcIdx !== null && dragSrcIdx !== i) {
-        const moved = photos.splice(dragSrcIdx, 1)[0];
-        photos.splice(i, 0, moved);
-        renderPhotoList();
+      if (selectable) {
+        row.addEventListener('click', () => {
+          if (collageSelected.has(i)) collageSelected.delete(i);
+          else collageSelected.add(i);
+          renderPhotoList(); updateCollageActionBar();
+        });
       }
-    });
+    }
+
+    // 拖曳排序（非拼貼模式下皆可用）
+    if (!collageMode) {
+      row.addEventListener('dragstart', () => {
+        dragSrcIdx = i;
+        setTimeout(() => row.classList.add('dragging'), 0);
+      });
+      row.addEventListener('dragend', () => row.classList.remove('dragging'));
+      row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over-top'); });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over-top'));
+      row.addEventListener('drop', e => {
+        e.preventDefault();
+        row.classList.remove('drag-over-top');
+        if (dragSrcIdx !== null && dragSrcIdx !== i) {
+          const moved = photos.splice(dragSrcIdx, 1)[0];
+          photos.splice(i, 0, moved);
+          renderPhotoList();
+        }
+      });
+    }
 
     list.appendChild(row);
   });
@@ -632,12 +740,53 @@ function renderPhotoList() {
     hint.style.display = 'none';
   }
 
+  // 拼貼按鈕只在有可合併的照片時顯示
+  const hasPhotos = photos.some(p => p.type === 'photo');
+  document.getElementById('collage-mode-btn').style.display = hasPhotos ? 'block' : 'none';
+
   updateSummary();
   checkReady();
 }
 
 function escapeAttr(s) {
   return s.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function toggleCollageMode() {
+  collageMode = !collageMode;
+  collageSelected.clear();
+  const btn = document.getElementById('collage-mode-btn');
+  btn.textContent = collageMode ? '✕ 取消拼貼模式' : '🖼️ 建立照片拼貼';
+  btn.classList.toggle('active', collageMode);
+  document.getElementById('collage-action-bar').classList.toggle('visible', collageMode);
+  renderPhotoList();
+  updateCollageActionBar();
+}
+
+function updateCollageActionBar() {
+  const n = collageSelected.size;
+  const btn = document.getElementById('collage-merge-btn');
+  btn.disabled = n < 2;
+  btn.textContent = n >= 2 ? `🖼️ 合併 ${n} 張成拼貼` : '請選 2 張以上';
+}
+
+function createCollage() {
+  const indices = [...collageSelected].sort((a, b) => a - b);
+  if (indices.length < 2) return;
+  const items = indices.map(i => ({
+    dataUrl: photos[i].dataUrl,
+    name: photos[i].name,
+    file: photos[i].file
+  }));
+  const firstIdx = indices[0];
+  [...indices].reverse().forEach(i => photos.splice(i, 1));
+  photos.splice(firstIdx, 0, { type: 'collage', items, text: '', name: `拼貼（${items.length}張）` });
+  collageSelected.clear();
+  collageMode = false;
+  document.getElementById('collage-mode-btn').textContent = '🖼️ 建立照片拼貼';
+  document.getElementById('collage-mode-btn').classList.remove('active');
+  document.getElementById('collage-action-bar').classList.remove('visible');
+  renderPhotoList(); updateSummary(); checkReady();
 }
 
 // ── 片頭照片 ──
@@ -964,6 +1113,8 @@ async function makeVideoLocally() {
         const clipStartSec = tsUs / 1_000_000;
         tsUs = await encodeVideoClipFrames(p, ctx, canvas, videoEncoder, W, H, tsUs);
         videoRanges.push({ startSec: clipStartSec, endSec: tsUs / 1_000_000, dataUrl: p.dataUrl, includeAudio: p.includeAudio !== false, trimStart: p.trimStart || 0 });
+      } else if (p.type === 'collage') {
+        tsUs = await encodeCollage(p, ctx, canvas, videoEncoder, W, H, tsUs);
       } else {
         const bmp = await loadBitmap(p.dataUrl);
         tsUs = await encodeKenBurns(p, bmp, ctx, canvas, videoEncoder, W, H, tsUs, i);
@@ -1078,6 +1229,77 @@ async function encodeStatic(canvas, encoder, durationSec, startTs) {
     frame.close();
     ts += frameDurUs;
   }
+  return ts;
+}
+
+// ── 拼貼排版 ──────────────────────────────────────────
+function getCollageLayout(n, W, H) {
+  const G = 8; // gap
+  if (n === 1) return [{x:0, y:0, w:W, h:H}];
+  if (n === 2) {
+    const w = (W-G)/2;
+    return [{x:0,y:0,w,h:H},{x:w+G,y:0,w,h:H}];
+  }
+  if (n === 3) {
+    const w1=Math.round((W-G)*0.55), w2=W-G-w1, h2=(H-G)/2;
+    return [{x:0,y:0,w:w1,h:H},{x:w1+G,y:0,w:w2,h:h2},{x:w1+G,y:h2+G,w:w2,h:H-h2-G}];
+  }
+  if (n === 4) {
+    const w=(W-G)/2, h=(H-G)/2;
+    return [{x:0,y:0,w,h},{x:w+G,y:0,w,h},{x:0,y:h+G,w,h},{x:w+G,y:h+G,w,h}];
+  }
+  if (n === 5) {
+    const tw=(W-2*G)/3, bw=(W-G)/2, rh=(H-G)/2;
+    return [{x:0,y:0,w:tw,h:rh},{x:tw+G,y:0,w:tw,h:rh},{x:2*(tw+G),y:0,w:tw,h:rh},
+            {x:0,y:rh+G,w:bw,h:H-rh-G},{x:bw+G,y:rh+G,w:W-bw-G,h:H-rh-G}];
+  }
+  if (n === 6) {
+    const cw=(W-2*G)/3, rh=(H-G)/2;
+    return Array.from({length:6},(_,i)=>({x:(i%3)*(cw+G),y:Math.floor(i/3)*(rh+G),w:cw,h:rh}));
+  }
+  const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
+  const cw=(W-(cols-1)*G)/cols, rh=(H-(rows-1)*G)/rows;
+  return Array.from({length:n},(_,i)=>({x:(i%cols)*(cw+G),y:Math.floor(i/cols)*(rh+G),w:cw,h:rh}));
+}
+
+async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
+  const KB_FPS = 8, totalFrames = Math.round(4 * KB_FPS);
+  const frameDurUs = Math.round(1_000_000 / KB_FPS);
+  const ZOOM = 0.05;
+
+  const bmps = await Promise.all(p.items.map(it => loadBitmap(it.dataUrl)));
+  const layout = getCollageLayout(bmps.length, W, H);
+
+  let ts = startTs;
+  for (let f = 0; f < totalFrames; f++) {
+    const zoom = 1.0 + ZOOM * (f / (totalFrames - 1 || 1));
+
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.translate(W/2, H/2); ctx.scale(zoom, zoom); ctx.translate(-W/2, -H/2);
+
+    layout.forEach((cell, ci) => {
+      if (!bmps[ci]) return;
+      const bmp = bmps[ci];
+      ctx.save();
+      ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
+      const sc = Math.max(cell.w/bmp.width, cell.h/bmp.height);
+      ctx.drawImage(bmp, cell.x+(cell.w-bmp.width*sc)/2, cell.y+(cell.h-bmp.height*sc)/2, bmp.width*sc, bmp.height*sc);
+      ctx.restore();
+    });
+
+    ctx.restore();
+    if (p.text) drawTextOverlay(ctx, p.text, W, H);
+
+    while (encoder.encodeQueueSize > 8) await new Promise(r => setTimeout(r, 16));
+    if (f % 4 === 0) await new Promise(r => setTimeout(r, 0));
+    const frame = new VideoFrame(canvas, { timestamp: ts, duration: frameDurUs });
+    encoder.encode(frame, { keyFrame: f === 0 });
+    frame.close();
+    ts += frameDurUs;
+  }
+  bmps.forEach(b => b.close());
   return ts;
 }
 
@@ -1335,6 +1557,9 @@ async function makeVideoRemote() {
           return btoa(bin);
         });
       }
+      if (p.type === 'collage') {
+        return renderCollageToBase64(p);
+      }
       return compressImage(p.dataUrl);
     }));
     setProgress(20);
@@ -1417,6 +1642,27 @@ function setStatus(type, msg) {
   box.className = type;
   box.style.display = 'block';
   box.textContent = msg;
+}
+
+async function renderCollageToBase64(p) {
+  const W = 1280, H = 720;
+  const bmps = await Promise.all(p.items.map(it => loadBitmap(it.dataUrl)));
+  const cvs = Object.assign(document.createElement('canvas'), {width:W, height:H});
+  const ctx = cvs.getContext('2d');
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
+  const layout = getCollageLayout(bmps.length, W, H);
+  layout.forEach((cell, ci) => {
+    if (!bmps[ci]) return;
+    const bmp = bmps[ci];
+    ctx.save();
+    ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
+    const sc = Math.max(cell.w/bmp.width, cell.h/bmp.height);
+    ctx.drawImage(bmp, cell.x+(cell.w-bmp.width*sc)/2, cell.y+(cell.h-bmp.height*sc)/2, bmp.width*sc, bmp.height*sc);
+    ctx.restore();
+  });
+  if (p.text) drawTextOverlay(ctx, p.text, W, H);
+  bmps.forEach(b => b.close());
+  return cvs.toDataURL('image/jpeg', 0.88).split(',')[1];
 }
 
 function compressImage(dataUrl) {
