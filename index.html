@@ -1079,7 +1079,7 @@ async function makeVideoLocally() {
     const { Muxer, ArrayBufferTarget } = await import('./mp4-muxer.js');
     await document.fonts.load("bold 72px 'Iansui'").catch(() => {});
 
-    const FPS = 24, W = 1280, H = 720;
+    const FPS = 24, W = 1920, H = 1080;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
@@ -1115,7 +1115,7 @@ async function makeVideoLocally() {
     try {
       videoEncoder.configure({
         codec: videoCodec, width: W, height: H,
-        bitrate: 2_000_000, framerate: FPS,
+        bitrate: 8_000_000, framerate: FPS,
         latencyMode: 'realtime'
       });
     } catch {
@@ -1364,7 +1364,7 @@ async function encodeKenBurns(p, bmp, ctx, canvas, encoder, W, H, startTs, idx) 
   // 預先把模糊背景畫好一次，避免每幀都重算 blur（手機很慢）
   const bgCanvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
   const bgCtx = bgCanvas.getContext('2d');
-  bgCtx.filter = 'blur(22px) brightness(0.55)';
+  bgCtx.filter = 'blur(32px) brightness(0.55)';
   const bgSc = coverScale * 1.05;
   bgCtx.drawImage(bmp,
     (W - bmp.width  * bgSc) / 2,
@@ -1719,7 +1719,7 @@ function setStatus(type, msg) {
 }
 
 async function renderCollageToBase64(p) {
-  const W = 1280, H = 720;
+  const W = 1920, H = 1080;
   const bmps = await Promise.all(p.items.map(it => loadBitmap(it.dataUrl)));
   const cvs = Object.assign(document.createElement('canvas'), {width:W, height:H});
   const ctx = cvs.getContext('2d');
@@ -2082,7 +2082,7 @@ function openCropModal(idx, itemIdx = -1) {
 
   if (itemIdx >= 0) {
     const p = photos[idx];
-    const layout = getCollageLayout(p.items.length, 1280, 720);
+    const layout = getCollageLayout(p.items.length, 1920, 1080);
     const cell = layout[itemIdx];
     cropModalAR = cell.w / cell.h;
     const item = p.items[itemIdx];
