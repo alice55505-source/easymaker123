@@ -1157,8 +1157,10 @@ async function makeVideoLocally() {
         tsUs = await encodeCollage(p, ctx, canvas, videoEncoder, W, H, tsUs);
       } else {
         const bmp = await loadBitmap(p.dataUrl);
-        tsUs = await encodeKenBurns(p, bmp, ctx, canvas, videoEncoder, W, H, tsUs, i);
+        const sharpBmp = await sharpenBitmap(bmp);
         bmp.close();
+        tsUs = await encodeKenBurns(p, sharpBmp, ctx, canvas, videoEncoder, W, H, tsUs, i);
+        sharpBmp.close();
       }
     }
 
@@ -1307,7 +1309,9 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
   const frameDurUs = Math.round(1_000_000 / KB_FPS);
   const ZOOM = 0.05;
 
-  const bmps = await Promise.all(p.items.map(it => loadBitmap(it.dataUrl)));
+  const rawBmps = await Promise.all(p.items.map(it => loadBitmap(it.dataUrl)));
+  const bmps = await Promise.all(rawBmps.map(b => sharpenBitmap(b)));
+  rawBmps.forEach(b => b.close());
   const layout = getCollageLayout(bmps.length, W, H);
 
   let ts = startTs;
@@ -1486,6 +1490,40 @@ function loadBitmap(src) {
     img.onerror = rej;
     img.src = src;
   });
+}
+
+// Unsharp Mask 銳化：改善 LINE 壓縮造成的模糊（在 canvas 層做，不改原始檔）
+async function sharpenBitmap(bmp) {
+  // 工作解析度最高 2400px（手機跑得動；比視頻輸出 1920 再高一點保留細節）
+  const MAX = 2400;
+  const sc = Math.min(1, MAX / Math.max(bmp.width, bmp.height));
+  const W = Math.round(bmp.width * sc), H = Math.round(bmp.height * sc);
+
+  // 原圖縮放到工作尺寸
+  const oc = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const octx = oc.getContext('2d');
+  octx.drawImage(bmp, 0, 0, W, H);
+  const orig = octx.getImageData(0, 0, W, H);
+
+  // 模糊版本（用於 Unsharp Mask 計算差值）
+  const blurC = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const blurCtx = blurC.getContext('2d');
+  blurCtx.filter = 'blur(1.5px)';
+  blurCtx.drawImage(bmp, 0, 0, W, H);
+  const blurred = blurCtx.getImageData(0, 0, W, H);
+
+  // sharpened = orig + AMT * (orig - blurred)，超過 THR 才處理（避免雜訊放大）
+  const od = orig.data, bd = blurred.data;
+  const AMT = 0.75, THR = 4;
+  for (let i = 0; i < od.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const diff = od[i + c] - bd[i + c];
+      if (Math.abs(diff) > THR) od[i + c] = Math.max(0, Math.min(255, od[i + c] + AMT * diff));
+    }
+  }
+  await new Promise(r => setTimeout(r, 0)); // 讓 UI 喘口氣
+  octx.putImageData(orig, 0, 0);
+  return createImageBitmap(oc);
 }
 
 function drawCover(ctx, bmp, W, H) {
