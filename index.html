@@ -1293,6 +1293,19 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
   const bmps = await Promise.all(p.items.map(it => loadBitmap(it.dataUrl)));
   const layout = getCollageLayout(bmps.length, W, H);
 
+  // 預先為每格畫好模糊背景（只算一次，之後每幀直接貼）
+  const bgCvs = layout.map((cell, ci) => {
+    const bmp = bmps[ci];
+    if (!bmp) return null;
+    const bc = Object.assign(document.createElement('canvas'), { width: cell.w, height: cell.h });
+    const bctx = bc.getContext('2d');
+    const bgSc = Math.max(cell.w / bmp.width, cell.h / bmp.height) * 1.05;
+    bctx.filter = 'blur(18px) brightness(0.5)';
+    bctx.drawImage(bmp, (cell.w - bmp.width * bgSc) / 2, (cell.h - bmp.height * bgSc) / 2, bmp.width * bgSc, bmp.height * bgSc);
+    bctx.filter = 'none';
+    return bc;
+  });
+
   let ts = startTs;
   for (let f = 0; f < totalFrames; f++) {
     const zoom = 1.0 + ZOOM * (f / (totalFrames - 1 || 1));
@@ -1307,8 +1320,12 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
       const bmp = bmps[ci];
       ctx.save();
       ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
-      const sc = Math.max(cell.w/bmp.width, cell.h/bmp.height);
-      ctx.drawImage(bmp, cell.x+(cell.w-bmp.width*sc)/2, cell.y+(cell.h-bmp.height*sc)/2, bmp.width*sc, bmp.height*sc);
+      // 模糊背景填滿格子
+      if (bgCvs[ci]) ctx.drawImage(bgCvs[ci], cell.x, cell.y);
+      // 主圖：contain，保留完整照片不裁切
+      const sc = Math.min(cell.w / bmp.width, cell.h / bmp.height);
+      const dw = bmp.width * sc, dh = bmp.height * sc;
+      ctx.drawImage(bmp, cell.x + (cell.w - dw) / 2, cell.y + (cell.h - dh) / 2, dw, dh);
       ctx.restore();
     });
 
@@ -1705,8 +1722,15 @@ async function renderCollageToBase64(p) {
     const bmp = bmps[ci];
     ctx.save();
     ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
-    const sc = Math.max(cell.w/bmp.width, cell.h/bmp.height);
-    ctx.drawImage(bmp, cell.x+(cell.w-bmp.width*sc)/2, cell.y+(cell.h-bmp.height*sc)/2, bmp.width*sc, bmp.height*sc);
+    // 模糊背景
+    const bgSc = Math.max(cell.w / bmp.width, cell.h / bmp.height) * 1.05;
+    ctx.filter = 'blur(18px) brightness(0.5)';
+    ctx.drawImage(bmp, cell.x + (cell.w - bmp.width * bgSc) / 2, cell.y + (cell.h - bmp.height * bgSc) / 2, bmp.width * bgSc, bmp.height * bgSc);
+    ctx.filter = 'none';
+    // 主圖：contain，保留完整照片
+    const sc = Math.min(cell.w / bmp.width, cell.h / bmp.height);
+    const dw = bmp.width * sc, dh = bmp.height * sc;
+    ctx.drawImage(bmp, cell.x + (cell.w - dw) / 2, cell.y + (cell.h - dh) / 2, dw, dh);
     ctx.restore();
   });
   if (p.text) drawTextOverlay(ctx, p.text, W, H);
