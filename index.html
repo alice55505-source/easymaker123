@@ -408,18 +408,18 @@
   /* 拼貼素材列 */
   .collage-row { background: #fffaf5; }
   .collage-mini-thumbs { display: flex; gap: 6px; flex-shrink: 0; }
-  .collage-mini-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .collage-mini-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .collage-mini-thumb {
     width: 44px; height: 33px; object-fit: cover;
     border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.15);
   }
   .collage-item-crop {
     background: none; border: none; font-size: .85rem; cursor: pointer;
-    color: #c5a898; padding: 1px 3px; border-radius: 5px;
+    color: #c5a898; padding: 1px 4px; border-radius: 5px;
     transition: color .15s, background .15s; line-height: 1;
   }
   .collage-item-crop:hover { color: #27ae60; background: #e8f8f0; }
-  .collage-item-crop.cropped { color: #27ae60; }
+  .collage-item-crop.has-crop { color: #27ae60; }
   .collage-badge {
     font-size: .78rem; background: var(--accent2); color: #fff;
     border-radius: 4px; padding: 1px 6px; margin-left: 4px;
@@ -650,7 +650,7 @@ function renderPhotoList() {
       const miniThumbs = p.items.map((it, ii) =>
         `<div class="collage-mini-item">
           <img class="collage-mini-thumb" src="${it.dataUrl}" alt="">
-          <button class="collage-item-crop${it.cropY !== undefined ? ' cropped' : ''}" title="裁剪" data-col-idx="${i}" data-item-idx="${ii}">✂</button>
+          <button class="collage-item-crop${it.focusX !== undefined ? ' has-crop' : ''}" data-col="${i}" data-item="${ii}" title="調整裁切">✂</button>
         </div>`
       ).join('');
       row.innerHTML = `
@@ -675,7 +675,7 @@ function renderPhotoList() {
       row.querySelectorAll('.collage-item-crop').forEach(btn => {
         btn.addEventListener('click', function(e) {
           e.stopPropagation();
-          openCropModal(+this.dataset.colIdx, +this.dataset.itemIdx);
+          openCropModal(+this.dataset.col, +this.dataset.item);
         });
       });
       // 拆開拼貼
@@ -1325,19 +1325,15 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
       const item = p.items[ci];
       ctx.save();
       ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
-      const hasCrop = (item.cropY !== undefined) && (bmp.height > bmp.width * 9 / 16 * 1.05);
-      if (hasCrop) {
-        // 使用用戶設定的 16:9 裁切區域，再 cover 到格子
-        const srcW = bmp.width, srcH = Math.round(bmp.width * 9 / 16);
-        const srcY = Math.round(item.cropY * (bmp.height - srcH));
-        const sc = Math.max(cell.w / srcW, cell.h / srcH);
-        ctx.drawImage(bmp, 0, srcY, srcW, srcH,
-          cell.x + (cell.w - srcW * sc) / 2, cell.y + (cell.h - srcH * sc) / 2, srcW * sc, srcH * sc);
-      } else {
-        // 預設 cover：填滿格子
-        const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
-        ctx.drawImage(bmp, cell.x + (cell.w - bmp.width * sc) / 2, cell.y + (cell.h - bmp.height * sc) / 2, bmp.width * sc, bmp.height * sc);
-      }
+      // source-rect crop：把照片中用戶選定的區域填入格子，無黑邊
+      const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
+      const srcW = cell.w / sc, srcH = cell.h / sc;
+      const fx = item.focusX ?? 0.5, fy = item.focusY ?? 0.5;
+      let srcX = fx * bmp.width - srcW / 2;
+      let srcY = fy * bmp.height - srcH / 2;
+      srcX = Math.max(0, Math.min(bmp.width - srcW, srcX));
+      srcY = Math.max(0, Math.min(bmp.height - srcH, srcY));
+      ctx.drawImage(bmp, srcX, srcY, srcW, srcH, cell.x, cell.y, cell.w, cell.h);
       ctx.restore();
     });
 
@@ -1735,17 +1731,14 @@ async function renderCollageToBase64(p) {
     const item = p.items[ci];
     ctx.save();
     ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
-    const hasCrop = (item.cropY !== undefined) && (bmp.height > bmp.width * 9 / 16 * 1.05);
-    if (hasCrop) {
-      const srcW = bmp.width, srcH = Math.round(bmp.width * 9 / 16);
-      const srcY = Math.round(item.cropY * (bmp.height - srcH));
-      const sc = Math.max(cell.w / srcW, cell.h / srcH);
-      ctx.drawImage(bmp, 0, srcY, srcW, srcH,
-        cell.x + (cell.w - srcW * sc) / 2, cell.y + (cell.h - srcH * sc) / 2, srcW * sc, srcH * sc);
-    } else {
-      const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
-      ctx.drawImage(bmp, cell.x + (cell.w - bmp.width * sc) / 2, cell.y + (cell.h - bmp.height * sc) / 2, bmp.width * sc, bmp.height * sc);
-    }
+    const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
+    const srcW = cell.w / sc, srcH = cell.h / sc;
+    const fx = item.focusX ?? 0.5, fy = item.focusY ?? 0.5;
+    let srcX = fx * bmp.width - srcW / 2;
+    let srcY = fy * bmp.height - srcH / 2;
+    srcX = Math.max(0, Math.min(bmp.width - srcW, srcX));
+    srcY = Math.max(0, Math.min(bmp.height - srcH, srcY));
+    ctx.drawImage(bmp, srcX, srcY, srcW, srcH, cell.x, cell.y, cell.w, cell.h);
     ctx.restore();
   });
   if (p.text) drawTextOverlay(ctx, p.text, W, H);
@@ -2073,24 +2066,49 @@ function captureSegment(video, startTime, endTime){
   });
 }
 
-// ── 照片 16:9 裁剪 Modal ──────────────────────────────────────────────
+// ── 照片裁剪 Modal（支援任意格子比例）───────────────────────────────────
 let cropModalIdx = -1;
-let cropModalItemIdx = -1; // >= 0 表示正在裁剪拼貼裡的第幾張
-let cropBoxTopFrac = 0.5;
-let _cropDragStartY = null;
-let _cropDragStartFrac = 0;
+let cropModalItemIdx = -1; // -1 = 獨立照片, >=0 = 拼貼格子
+let cropModalAR = 16 / 9;  // 裁切框長寬比 (width/height)
+let cropFrac = 0.5;        // 框位置 (0=頂/左, 1=底/右)
+let _cropMoveDir = 'v';    // 'v'=上下, 'h'=左右, 'none'=不需移動
+let _cropDragSX = null, _cropDragSY = null, _cropDragSFrac = 0;
 
 function openCropModal(idx, itemIdx = -1) {
   cropModalIdx = idx;
   cropModalItemIdx = itemIdx;
-  const target = itemIdx >= 0 ? photos[idx].items[itemIdx] : photos[idx];
-  cropBoxTopFrac = (target.cropY !== undefined) ? target.cropY : 0.5;
-  const modal = document.getElementById('crop-modal');
   const img = document.getElementById('crop-img');
-  modal.style.display = 'flex';
-  img.onload = () => updateCropOverlay();
-  img.src = target.dataUrl;
-  setTimeout(() => { if (img.complete) updateCropOverlay(); }, 80);
+  document.getElementById('crop-modal').style.display = 'flex';
+
+  if (itemIdx >= 0) {
+    const p = photos[idx];
+    const layout = getCollageLayout(p.items.length, 1280, 720);
+    const cell = layout[itemIdx];
+    cropModalAR = cell.w / cell.h;
+    const item = p.items[itemIdx];
+    img.onload = () => _initCropFracFromFocus(item.focusX ?? 0.5, item.focusY ?? 0.5);
+    img.src = item.dataUrl;
+  } else {
+    cropModalAR = 16 / 9;
+    const p = photos[idx];
+    img.onload = () => { cropFrac = p.cropY ?? 0.5; updateCropOverlay(); };
+    img.src = p.dataUrl;
+  }
+  setTimeout(() => { if (img.complete) img.onload(); }, 80);
+}
+
+function _initCropFracFromFocus(fx, fy) {
+  const img = document.getElementById('crop-img');
+  const dW = img.offsetWidth, dH = img.offsetHeight;
+  if (!dW) return;
+  if (cropModalAR >= dW / dH) {
+    const bH = dW / cropModalAR, maxT = dH - bH;
+    cropFrac = maxT > 0 ? Math.max(0, Math.min(1, (fy * dH - bH / 2) / maxT)) : 0.5;
+  } else {
+    const bW = dH * cropModalAR, maxL = dW - bW;
+    cropFrac = maxL > 0 ? Math.max(0, Math.min(1, (fx * dW - bW / 2) / maxL)) : 0.5;
+  }
+  updateCropOverlay();
 }
 
 function closeCropModal() {
@@ -2101,46 +2119,50 @@ function updateCropOverlay() {
   const img = document.getElementById('crop-img');
   if (!img.offsetWidth) return;
   const wrap = document.getElementById('crop-wrap');
-  const W = img.offsetWidth, H = img.offsetHeight;
-  wrap.style.width = W + 'px';
-  wrap.style.height = H + 'px';
-  const boxH = Math.round(W * 9 / 16);
-  const topShade = document.getElementById('crop-top-shade');
+  const dW = img.offsetWidth, dH = img.offsetHeight;
+  wrap.style.width = dW + 'px'; wrap.style.height = dH + 'px';
   const box = document.getElementById('crop-box');
-  const botShade = document.getElementById('crop-bot-shade');
-  if (boxH >= H) {
-    topShade.style.display = 'none';
-    box.style.display = 'none';
-    botShade.style.display = 'none';
-    return;
+  const hint = document.getElementById('crop-drag-hint');
+  let bL, bT, bW, bH;
+  if (cropModalAR >= dW / dH) {
+    bW = dW; bH = Math.round(dW / cropModalAR); bL = 0;
+    const maxT = dH - bH;
+    if (maxT <= 0) { bH = dH; bT = 0; _cropMoveDir = 'none'; }
+    else { bT = Math.round(cropFrac * maxT); _cropMoveDir = 'v'; }
+    if (hint) hint.textContent = '↕ 拖曳調整';
+  } else {
+    bH = dH; bW = Math.round(dH * cropModalAR); bT = 0;
+    const maxL = dW - bW;
+    if (maxL <= 0) { bW = dW; bL = 0; _cropMoveDir = 'none'; }
+    else { bL = Math.round(cropFrac * maxL); _cropMoveDir = 'h'; }
+    if (hint) hint.textContent = '↔ 拖曳調整';
   }
-  const maxTop = H - boxH;
-  const boxTop = Math.round(cropBoxTopFrac * maxTop);
-  topShade.style.display = '';
-  topShade.style.height = boxTop + 'px';
-  box.style.display = 'flex';
-  box.style.top = boxTop + 'px';
-  box.style.height = boxH + 'px';
-  botShade.style.display = '';
-  botShade.style.top = (boxTop + boxH) + 'px';
-  botShade.style.height = (H - boxTop - boxH) + 'px';
+  box.style.left = bL + 'px'; box.style.top = bT + 'px';
+  box.style.width = bW + 'px'; box.style.height = bH + 'px';
+  box.style.cursor = _cropMoveDir === 'v' ? 'ns-resize' : (_cropMoveDir === 'h' ? 'ew-resize' : 'default');
 }
 
 function confirmCrop() {
-  if (cropModalIdx >= 0) {
-    const img = document.getElementById('crop-img');
-    const W = img.offsetWidth, H = img.offsetHeight;
-    const boxH = Math.round(W * 9 / 16);
-    const target = cropModalItemIdx >= 0
-      ? photos[cropModalIdx].items[cropModalItemIdx]
-      : photos[cropModalIdx];
-    if (boxH < H) {
-      target.cropY = cropBoxTopFrac;
+  if (cropModalIdx < 0) { closeCropModal(); return; }
+  const img = document.getElementById('crop-img');
+  const dW = img.offsetWidth, dH = img.offsetHeight;
+  if (cropModalItemIdx >= 0) {
+    const item = photos[cropModalIdx].items[cropModalItemIdx];
+    if (cropModalAR >= dW / dH) {
+      const bH = dW / cropModalAR, maxT = dH - bH;
+      const cy = maxT > 0 ? cropFrac * maxT + bH / 2 : dH / 2;
+      item.focusX = 0.5; item.focusY = cy / dH;
     } else {
-      delete target.cropY;
+      const bW = dH * cropModalAR, maxL = dW - bW;
+      const cx = maxL > 0 ? cropFrac * maxL + bW / 2 : dW / 2;
+      item.focusX = cx / dW; item.focusY = 0.5;
     }
-    renderPhotoList();
+  } else {
+    const bH = Math.round(dW / cropModalAR);
+    if (bH < dH) photos[cropModalIdx].cropY = cropFrac;
+    else delete photos[cropModalIdx].cropY;
   }
+  renderPhotoList();
   closeCropModal();
 }
 
@@ -2148,24 +2170,27 @@ function confirmCrop() {
   function setup() {
     const box = document.getElementById('crop-box');
     if (!box) return;
-    const onStart = y => { _cropDragStartY = y; _cropDragStartFrac = cropBoxTopFrac; };
-    const onMove = y => {
-      if (_cropDragStartY === null) return;
+    const onStart = (cx, cy) => { _cropDragSX = cx; _cropDragSY = cy; _cropDragSFrac = cropFrac; };
+    const onMove = (cx, cy) => {
+      if (_cropDragSX === null) return;
       const img = document.getElementById('crop-img');
-      const W = img.offsetWidth, H = img.offsetHeight;
-      const boxH = Math.round(W * 9 / 16);
-      const maxTop = H - boxH;
-      if (maxTop <= 0) return;
-      cropBoxTopFrac = Math.max(0, Math.min(1, _cropDragStartFrac + (y - _cropDragStartY) / maxTop));
+      const dW = img.offsetWidth, dH = img.offsetHeight;
+      if (_cropMoveDir === 'v') {
+        const maxT = dH - Math.round(dW / cropModalAR);
+        if (maxT > 0) cropFrac = Math.max(0, Math.min(1, _cropDragSFrac + (cy - _cropDragSY) / maxT));
+      } else if (_cropMoveDir === 'h') {
+        const maxL = dW - Math.round(dH * cropModalAR);
+        if (maxL > 0) cropFrac = Math.max(0, Math.min(1, _cropDragSFrac + (cx - _cropDragSX) / maxL));
+      }
       updateCropOverlay();
     };
-    const onEnd = () => { _cropDragStartY = null; };
-    box.addEventListener('mousedown', e => { onStart(e.clientY); e.preventDefault(); });
-    document.addEventListener('mousemove', e => onMove(e.clientY));
+    const onEnd = () => { _cropDragSX = null; _cropDragSY = null; };
+    box.addEventListener('mousedown', e => { onStart(e.clientX, e.clientY); e.preventDefault(); });
+    document.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
     document.addEventListener('mouseup', onEnd);
-    box.addEventListener('touchstart', e => { onStart(e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+    box.addEventListener('touchstart', e => { onStart(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
     document.addEventListener('touchmove', e => {
-      if (_cropDragStartY !== null) { onMove(e.touches[0].clientY); e.preventDefault(); }
+      if (_cropDragSX !== null) { onMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }
     }, { passive: false });
     document.addEventListener('touchend', onEnd);
   }
@@ -2207,16 +2232,14 @@ function confirmCrop() {
   </div>
 </div>
 
-<!-- 照片 16:9 裁剪 Modal -->
+<!-- 照片裁剪 Modal -->
 <div id="crop-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:2001;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:14px;">
-  <div style="color:#fff;font-size:1rem;font-weight:700;letter-spacing:1px;">16:9 裁剪框 — 上下拖曳調整</div>
+  <div style="color:#fff;font-size:1rem;font-weight:700;letter-spacing:1px;">裁剪框 — 拖曳調整</div>
   <div id="crop-wrap" style="position:relative;overflow:hidden;">
     <img id="crop-img" alt="" style="display:block;max-width:90vw;max-height:60vh;">
-    <div id="crop-top-shade" style="position:absolute;top:0;left:0;right:0;background:rgba(0,0,0,0.65);pointer-events:none;"></div>
-    <div id="crop-box" style="position:absolute;left:0;right:0;border:2px solid #e74c3c;box-sizing:border-box;touch-action:none;cursor:ns-resize;display:flex;align-items:center;justify-content:center;">
-      <span style="background:rgba(231,76,60,0.85);color:#fff;padding:3px 12px;border-radius:16px;font-size:.8rem;pointer-events:none;user-select:none;">↕ 拖曳調整</span>
+    <div id="crop-box" style="position:absolute;border:2px solid #e74c3c;box-sizing:border-box;touch-action:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;">
+      <span id="crop-drag-hint" style="background:rgba(231,76,60,0.85);color:#fff;padding:3px 12px;border-radius:16px;font-size:.8rem;pointer-events:none;user-select:none;">↕ 拖曳調整</span>
     </div>
-    <div id="crop-bot-shade" style="position:absolute;left:0;right:0;background:rgba(0,0,0,0.65);pointer-events:none;"></div>
   </div>
   <div style="display:flex;gap:12px;width:100%;max-width:400px;">
     <button onclick="closeCropModal()" style="flex:1;padding:12px;border-radius:10px;border:none;background:#3a3a55;color:#ccc;cursor:pointer;font-size:.95rem;">取消</button>
