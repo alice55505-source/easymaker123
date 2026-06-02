@@ -420,6 +420,20 @@
   }
   .collage-item-crop:hover { color: #27ae60; background: #e8f8f0; }
   .collage-item-crop.has-crop { color: #27ae60; }
+  .collage-item-fit {
+    background: none; border: none; font-size: .85rem; cursor: pointer;
+    color: #c5a898; padding: 1px 4px; border-radius: 5px;
+    transition: color .15s, background .15s; line-height: 1;
+  }
+  .collage-item-fit:hover { color: #2980b9; background: #e8f4fc; }
+  .collage-item-fit.is-fit { color: #2980b9; }
+  .collage-split-ctrl { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  .collage-split-btn {
+    background: none; border: 1px solid var(--border); font-size: .8rem;
+    cursor: pointer; color: var(--muted); padding: 2px 7px; border-radius: 5px;
+    transition: background .15s; line-height: 1;
+  }
+  .collage-split-btn:hover { background: #f0e8e4; color: var(--accent); }
   .collage-badge {
     font-size: .78rem; background: var(--accent2); color: #fff;
     border-radius: 4px; padding: 1px 6px; margin-left: 4px;
@@ -647,16 +661,26 @@ function renderPhotoList() {
       // ── 拼貼素材列 ──
       row.className = 'photo-row collage-row';
       row.draggable = true;
+      const isTwo = p.items.length === 2;
+      const splitRatio = p.splitRatio ?? 0.5;
       const miniThumbs = p.items.map((it, ii) =>
         `<div class="collage-mini-item">
           <img class="collage-mini-thumb" src="${it.dataUrl}" alt="">
-          <button class="collage-item-crop${it.focusX !== undefined ? ' has-crop' : ''}" data-col="${i}" data-item="${ii}" title="調整裁切">✂</button>
+          <div style="display:flex;gap:2px;justify-content:center;">
+            ${!it.fitMode ? `<button class="collage-item-crop${it.focusX !== undefined ? ' has-crop' : ''}" data-col="${i}" data-item="${ii}" title="調整裁切">✂</button>` : ''}
+            <button class="collage-item-fit${it.fitMode ? ' is-fit' : ''}" data-col="${i}" data-item="${ii}" title="${it.fitMode ? '切回裁切模式' : '全部顯示（不裁切）'}">⊞</button>
+          </div>
         </div>`
       ).join('');
       row.innerHTML = `
         <span class="drag-handle" title="拖曳排序">⠿</span>
         <span class="photo-num">${i + 1}</span>
         <div class="collage-mini-thumbs">${miniThumbs}</div>
+        ${isTwo ? `<div class="collage-split-ctrl">
+          <button class="collage-split-btn" data-col="${i}" data-dir="-1" title="右邊放大">◀</button>
+          <span style="font-size:.7rem;color:var(--muted);min-width:36px;text-align:center;">${Math.round(splitRatio*100)}:${Math.round((1-splitRatio)*100)}</span>
+          <button class="collage-split-btn" data-col="${i}" data-dir="1" title="左邊放大">▶</button>
+        </div>` : ''}
         <span class="photo-fname">拼貼<span class="collage-badge">${p.items.length}張</span></span>
         <div class="photo-text-wrap">
           <input type="text"
@@ -676,6 +700,22 @@ function renderPhotoList() {
         btn.addEventListener('click', function(e) {
           e.stopPropagation();
           openCropModal(+this.dataset.col, +this.dataset.item);
+        });
+      });
+      row.querySelectorAll('.collage-item-fit').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const item = photos[+this.dataset.col].items[+this.dataset.item];
+          item.fitMode = !item.fitMode;
+          renderPhotoList();
+        });
+      });
+      row.querySelectorAll('.collage-split-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const cp = photos[+this.dataset.col];
+          cp.splitRatio = Math.max(0.3, Math.min(0.7, (cp.splitRatio ?? 0.5) + +this.dataset.dir * 0.1));
+          renderPhotoList();
         });
       });
       // 拆開拼貼
@@ -1275,12 +1315,12 @@ async function encodeStatic(canvas, encoder, durationSec, startTs) {
 }
 
 // ── 拼貼排版 ──────────────────────────────────────────
-function getCollageLayout(n, W, H) {
+function getCollageLayout(n, W, H, splitRatio = 0.5) {
   const G = 8; // gap
   if (n === 1) return [{x:0, y:0, w:W, h:H}];
   if (n === 2) {
-    const w = (W-G)/2;
-    return [{x:0,y:0,w,h:H},{x:w+G,y:0,w,h:H}];
+    const w = Math.round((W-G) * splitRatio);
+    return [{x:0,y:0,w,h:H},{x:w+G,y:0,w:W-G-w,h:H}];
   }
   if (n === 3) {
     const w1=Math.round((W-G)*0.55), w2=W-G-w1, h2=(H-G)/2;
@@ -1312,7 +1352,7 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
   const rawBmps = await Promise.all(p.items.map(it => loadBitmap(it.dataUrl)));
   const bmps = await Promise.all(rawBmps.map(b => sharpenBitmap(b)));
   rawBmps.forEach(b => b.close());
-  const layout = getCollageLayout(bmps.length, W, H);
+  const layout = getCollageLayout(bmps.length, W, H, p.splitRatio);
 
   let ts = startTs;
   for (let f = 0; f < totalFrames; f++) {
@@ -1329,15 +1369,22 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
       const item = p.items[ci];
       ctx.save();
       ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
-      // source-rect crop：把照片中用戶選定的區域填入格子，無黑邊
-      const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
-      const srcW = cell.w / sc, srcH = cell.h / sc;
-      const fx = item.focusX ?? 0.5, fy = item.focusY ?? 0.5;
-      let srcX = fx * bmp.width - srcW / 2;
-      let srcY = fy * bmp.height - srcH / 2;
-      srcX = Math.max(0, Math.min(bmp.width - srcW, srcX));
-      srcY = Math.max(0, Math.min(bmp.height - srcH, srcY));
-      ctx.drawImage(bmp, srcX, srcY, srcW, srcH, cell.x, cell.y, cell.w, cell.h);
+      if (item.fitMode) {
+        // 全部顯示：contain，照片縮小不裁切，深色背景
+        const sc = Math.min(cell.w / bmp.width, cell.h / bmp.height);
+        const dw = bmp.width * sc, dh = bmp.height * sc;
+        ctx.drawImage(bmp, cell.x + (cell.w - dw) / 2, cell.y + (cell.h - dh) / 2, dw, dh);
+      } else {
+        // 裁切模式：cover + focusX/focusY
+        const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
+        const srcW = cell.w / sc, srcH = cell.h / sc;
+        const fx = item.focusX ?? 0.5, fy = item.focusY ?? 0.5;
+        let srcX = fx * bmp.width - srcW / 2;
+        let srcY = fy * bmp.height - srcH / 2;
+        srcX = Math.max(0, Math.min(bmp.width - srcW, srcX));
+        srcY = Math.max(0, Math.min(bmp.height - srcH, srcY));
+        ctx.drawImage(bmp, srcX, srcY, srcW, srcH, cell.x, cell.y, cell.w, cell.h);
+      }
       ctx.restore();
     });
 
@@ -1762,21 +1809,27 @@ async function renderCollageToBase64(p) {
   const cvs = Object.assign(document.createElement('canvas'), {width:W, height:H});
   const ctx = cvs.getContext('2d');
   ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
-  const layout = getCollageLayout(bmps.length, W, H);
+  const layout = getCollageLayout(bmps.length, W, H, p.splitRatio);
   layout.forEach((cell, ci) => {
     if (!bmps[ci]) return;
     const bmp = bmps[ci];
     const item = p.items[ci];
     ctx.save();
     ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
-    const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
-    const srcW = cell.w / sc, srcH = cell.h / sc;
-    const fx = item.focusX ?? 0.5, fy = item.focusY ?? 0.5;
-    let srcX = fx * bmp.width - srcW / 2;
-    let srcY = fy * bmp.height - srcH / 2;
-    srcX = Math.max(0, Math.min(bmp.width - srcW, srcX));
-    srcY = Math.max(0, Math.min(bmp.height - srcH, srcY));
-    ctx.drawImage(bmp, srcX, srcY, srcW, srcH, cell.x, cell.y, cell.w, cell.h);
+    if (item.fitMode) {
+      const sc = Math.min(cell.w / bmp.width, cell.h / bmp.height);
+      const dw = bmp.width * sc, dh = bmp.height * sc;
+      ctx.drawImage(bmp, cell.x + (cell.w - dw) / 2, cell.y + (cell.h - dh) / 2, dw, dh);
+    } else {
+      const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
+      const srcW = cell.w / sc, srcH = cell.h / sc;
+      const fx = item.focusX ?? 0.5, fy = item.focusY ?? 0.5;
+      let srcX = fx * bmp.width - srcW / 2;
+      let srcY = fy * bmp.height - srcH / 2;
+      srcX = Math.max(0, Math.min(bmp.width - srcW, srcX));
+      srcY = Math.max(0, Math.min(bmp.height - srcH, srcY));
+      ctx.drawImage(bmp, srcX, srcY, srcW, srcH, cell.x, cell.y, cell.w, cell.h);
+    }
     ctx.restore();
   });
   if (p.text) drawTextOverlay(ctx, p.text, W, H);
@@ -2120,7 +2173,7 @@ function openCropModal(idx, itemIdx = -1) {
 
   if (itemIdx >= 0) {
     const p = photos[idx];
-    const layout = getCollageLayout(p.items.length, 1920, 1080);
+    const layout = getCollageLayout(p.items.length, 1920, 1080, p.splitRatio);
     const cell = layout[itemIdx];
     cropModalAR = cell.w / cell.h;
     const item = p.items[itemIdx];
