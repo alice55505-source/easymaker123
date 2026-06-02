@@ -407,11 +407,19 @@
 
   /* 拼貼素材列 */
   .collage-row { background: #fffaf5; }
-  .collage-mini-thumbs { display: flex; gap: 4px; flex-shrink: 0; }
+  .collage-mini-thumbs { display: flex; gap: 6px; flex-shrink: 0; }
+  .collage-mini-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .collage-mini-thumb {
     width: 44px; height: 33px; object-fit: cover;
     border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.15);
   }
+  .collage-item-crop {
+    background: none; border: none; font-size: .85rem; cursor: pointer;
+    color: #c5a898; padding: 1px 3px; border-radius: 5px;
+    transition: color .15s, background .15s; line-height: 1;
+  }
+  .collage-item-crop:hover { color: #27ae60; background: #e8f8f0; }
+  .collage-item-crop.cropped { color: #27ae60; }
   .collage-badge {
     font-size: .78rem; background: var(--accent2); color: #fff;
     border-radius: 4px; padding: 1px 6px; margin-left: 4px;
@@ -639,8 +647,11 @@ function renderPhotoList() {
       // ── 拼貼素材列 ──
       row.className = 'photo-row collage-row';
       row.draggable = true;
-      const miniThumbs = p.items.map(it =>
-        `<img class="collage-mini-thumb" src="${it.dataUrl}" alt="">`
+      const miniThumbs = p.items.map((it, ii) =>
+        `<div class="collage-mini-item">
+          <img class="collage-mini-thumb" src="${it.dataUrl}" alt="">
+          <button class="collage-item-crop${it.cropY !== undefined ? ' cropped' : ''}" title="裁剪" data-col-idx="${i}" data-item-idx="${ii}">✂</button>
+        </div>`
       ).join('');
       row.innerHTML = `
         <span class="drag-handle" title="拖曳排序">⠿</span>
@@ -654,12 +665,18 @@ function renderPhotoList() {
             value="${escapeAttr(p.text)}"
             data-idx="${i}">
         </div>
-        <button class="photo-del" title="拆開拼貼" data-idx="${i}" title="拆開">⊞</button>
+        <button class="photo-del" title="拆開拼貼" data-idx="${i}">⊞</button>
       `;
       row.querySelector('.photo-text-input').addEventListener('input', function() {
         photos[this.dataset.idx].text = this.value;
         this.classList.toggle('has-text', this.value.trim().length > 0);
         updateSummary();
+      });
+      row.querySelectorAll('.collage-item-crop').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          openCropModal(+this.dataset.colIdx, +this.dataset.itemIdx);
+        });
       });
       // 拆開拼貼
       row.querySelector('.photo-del').addEventListener('click', function(e) {
@@ -796,11 +813,11 @@ function updateCollageActionBar() {
 function createCollage() {
   const indices = [...collageSelected].sort((a, b) => a - b);
   if (indices.length < 2) return;
-  const items = indices.map(i => ({
-    dataUrl: photos[i].dataUrl,
-    name: photos[i].name,
-    file: photos[i].file
-  }));
+  const items = indices.map(i => {
+    const item = { dataUrl: photos[i].dataUrl, name: photos[i].name, file: photos[i].file };
+    if (photos[i].cropY !== undefined) item.cropY = photos[i].cropY;
+    return item;
+  });
   const firstIdx = indices[0];
   [...indices].reverse().forEach(i => photos.splice(i, 1));
   photos.splice(firstIdx, 0, { type: 'collage', items, text: '', name: `拼貼（${items.length}張）` });
@@ -1293,19 +1310,6 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
   const bmps = await Promise.all(p.items.map(it => loadBitmap(it.dataUrl)));
   const layout = getCollageLayout(bmps.length, W, H);
 
-  // 預先為每格畫好模糊背景（只算一次，之後每幀直接貼）
-  const bgCvs = layout.map((cell, ci) => {
-    const bmp = bmps[ci];
-    if (!bmp) return null;
-    const bc = Object.assign(document.createElement('canvas'), { width: cell.w, height: cell.h });
-    const bctx = bc.getContext('2d');
-    const bgSc = Math.max(cell.w / bmp.width, cell.h / bmp.height) * 1.05;
-    bctx.filter = 'blur(18px) brightness(0.5)';
-    bctx.drawImage(bmp, (cell.w - bmp.width * bgSc) / 2, (cell.h - bmp.height * bgSc) / 2, bmp.width * bgSc, bmp.height * bgSc);
-    bctx.filter = 'none';
-    return bc;
-  });
-
   let ts = startTs;
   for (let f = 0; f < totalFrames; f++) {
     const zoom = 1.0 + ZOOM * (f / (totalFrames - 1 || 1));
@@ -1318,14 +1322,22 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
     layout.forEach((cell, ci) => {
       if (!bmps[ci]) return;
       const bmp = bmps[ci];
+      const item = p.items[ci];
       ctx.save();
       ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
-      // 模糊背景填滿格子
-      if (bgCvs[ci]) ctx.drawImage(bgCvs[ci], cell.x, cell.y);
-      // 主圖：contain，保留完整照片不裁切
-      const sc = Math.min(cell.w / bmp.width, cell.h / bmp.height);
-      const dw = bmp.width * sc, dh = bmp.height * sc;
-      ctx.drawImage(bmp, cell.x + (cell.w - dw) / 2, cell.y + (cell.h - dh) / 2, dw, dh);
+      const hasCrop = (item.cropY !== undefined) && (bmp.height > bmp.width * 9 / 16 * 1.05);
+      if (hasCrop) {
+        // 使用用戶設定的 16:9 裁切區域，再 cover 到格子
+        const srcW = bmp.width, srcH = Math.round(bmp.width * 9 / 16);
+        const srcY = Math.round(item.cropY * (bmp.height - srcH));
+        const sc = Math.max(cell.w / srcW, cell.h / srcH);
+        ctx.drawImage(bmp, 0, srcY, srcW, srcH,
+          cell.x + (cell.w - srcW * sc) / 2, cell.y + (cell.h - srcH * sc) / 2, srcW * sc, srcH * sc);
+      } else {
+        // 預設 cover：填滿格子
+        const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
+        ctx.drawImage(bmp, cell.x + (cell.w - bmp.width * sc) / 2, cell.y + (cell.h - bmp.height * sc) / 2, bmp.width * sc, bmp.height * sc);
+      }
       ctx.restore();
     });
 
@@ -1720,17 +1732,20 @@ async function renderCollageToBase64(p) {
   layout.forEach((cell, ci) => {
     if (!bmps[ci]) return;
     const bmp = bmps[ci];
+    const item = p.items[ci];
     ctx.save();
     ctx.beginPath(); ctx.rect(cell.x, cell.y, cell.w, cell.h); ctx.clip();
-    // 模糊背景
-    const bgSc = Math.max(cell.w / bmp.width, cell.h / bmp.height) * 1.05;
-    ctx.filter = 'blur(18px) brightness(0.5)';
-    ctx.drawImage(bmp, cell.x + (cell.w - bmp.width * bgSc) / 2, cell.y + (cell.h - bmp.height * bgSc) / 2, bmp.width * bgSc, bmp.height * bgSc);
-    ctx.filter = 'none';
-    // 主圖：contain，保留完整照片
-    const sc = Math.min(cell.w / bmp.width, cell.h / bmp.height);
-    const dw = bmp.width * sc, dh = bmp.height * sc;
-    ctx.drawImage(bmp, cell.x + (cell.w - dw) / 2, cell.y + (cell.h - dh) / 2, dw, dh);
+    const hasCrop = (item.cropY !== undefined) && (bmp.height > bmp.width * 9 / 16 * 1.05);
+    if (hasCrop) {
+      const srcW = bmp.width, srcH = Math.round(bmp.width * 9 / 16);
+      const srcY = Math.round(item.cropY * (bmp.height - srcH));
+      const sc = Math.max(cell.w / srcW, cell.h / srcH);
+      ctx.drawImage(bmp, 0, srcY, srcW, srcH,
+        cell.x + (cell.w - srcW * sc) / 2, cell.y + (cell.h - srcH * sc) / 2, srcW * sc, srcH * sc);
+    } else {
+      const sc = Math.max(cell.w / bmp.width, cell.h / bmp.height);
+      ctx.drawImage(bmp, cell.x + (cell.w - bmp.width * sc) / 2, cell.y + (cell.h - bmp.height * sc) / 2, bmp.width * sc, bmp.height * sc);
+    }
     ctx.restore();
   });
   if (p.text) drawTextOverlay(ctx, p.text, W, H);
@@ -2060,19 +2075,21 @@ function captureSegment(video, startTime, endTime){
 
 // ── 照片 16:9 裁剪 Modal ──────────────────────────────────────────────
 let cropModalIdx = -1;
+let cropModalItemIdx = -1; // >= 0 表示正在裁剪拼貼裡的第幾張
 let cropBoxTopFrac = 0.5;
 let _cropDragStartY = null;
 let _cropDragStartFrac = 0;
 
-function openCropModal(idx) {
+function openCropModal(idx, itemIdx = -1) {
   cropModalIdx = idx;
-  const p = photos[idx];
-  cropBoxTopFrac = (p.cropY !== undefined) ? p.cropY : 0.5;
+  cropModalItemIdx = itemIdx;
+  const target = itemIdx >= 0 ? photos[idx].items[itemIdx] : photos[idx];
+  cropBoxTopFrac = (target.cropY !== undefined) ? target.cropY : 0.5;
   const modal = document.getElementById('crop-modal');
   const img = document.getElementById('crop-img');
   modal.style.display = 'flex';
   img.onload = () => updateCropOverlay();
-  img.src = p.dataUrl;
+  img.src = target.dataUrl;
   setTimeout(() => { if (img.complete) updateCropOverlay(); }, 80);
 }
 
@@ -2114,10 +2131,13 @@ function confirmCrop() {
     const img = document.getElementById('crop-img');
     const W = img.offsetWidth, H = img.offsetHeight;
     const boxH = Math.round(W * 9 / 16);
+    const target = cropModalItemIdx >= 0
+      ? photos[cropModalIdx].items[cropModalItemIdx]
+      : photos[cropModalIdx];
     if (boxH < H) {
-      photos[cropModalIdx].cropY = cropBoxTopFrac;
+      target.cropY = cropBoxTopFrac;
     } else {
-      delete photos[cropModalIdx].cropY;
+      delete target.cropY;
     }
     renderPhotoList();
   }
