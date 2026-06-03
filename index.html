@@ -1550,13 +1550,13 @@ async function sharpenBitmap(bmp) {
 
   // 原圖縮放到工作尺寸
   const oc = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const octx = oc.getContext('2d');
+  const octx = oc.getContext('2d', { willReadFrequently: true });
   octx.drawImage(bmp, 0, 0, W, H);
   const orig = octx.getImageData(0, 0, W, H);
 
   // 模糊版本（用於 Unsharp Mask 計算差值）
   const blurC = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const blurCtx = blurC.getContext('2d');
+  const blurCtx = blurC.getContext('2d', { willReadFrequently: true });
   blurCtx.filter = 'blur(1.5px)';
   blurCtx.drawImage(bmp, 0, 0, W, H);
   const blurred = blurCtx.getImageData(0, 0, W, H);
