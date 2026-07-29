@@ -1243,14 +1243,30 @@ async function makeVideoLocally() {
     const decoded  = await audioCtx.decodeAudioData(await audioRes.arrayBuffer());
     audioCtx.close();
 
+    // 部分 iOS 裝置的 AudioEncoder configure() 不報錯，
+    // 但實際上無法正確編碼（與先前 VideoEncoder 的已知 bug 同類），
+    // 造成影片「合成成功」卻沒有聲音。先檢查是否真的支援此設定。
+    const audioSupport = await AudioEncoder.isConfigSupported({
+      codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2, bitrate: 128_000
+    }).catch(() => null);
+    if (audioSupport && audioSupport.supported === false) {
+      throw new Error('AudioEncoder is not configured');
+    }
+
     let audioError = null;
+    let audioChunkCount = 0;
     const audioEncoder = new AudioEncoder({
-      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+      output: (chunk, meta) => { audioChunkCount++; muxer.addAudioChunk(chunk, meta); },
       error: e => { audioError = e; }
     });
     audioEncoder.configure({
       codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2, bitrate: 128_000
     });
+    // 等一個 microtask，讓非同步的 configure 錯誤有機會觸發 error callback
+    await new Promise(r => setTimeout(r, 0));
+    if (audioError || audioEncoder.state !== 'configured') {
+      throw new Error('AudioEncoder is not configured');
+    }
 
     const CHUNK = 4096;
     const totalFrames  = Math.ceil(totalSec * 44100);
@@ -1269,6 +1285,7 @@ async function makeVideoLocally() {
     }
     await audioEncoder.flush();
     if (audioError) throw audioError;
+    if (audioChunkCount === 0 && totalFrames > 0) throw new Error('AudioEncoder is not configured');
 
     setProgress(96);
     setStatus('info', '📦 封裝影片⋯⋯');
