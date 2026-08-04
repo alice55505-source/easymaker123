@@ -1053,8 +1053,8 @@ function renderMusicUploadRow() {
   const row = document.getElementById('music-upload-row');
   if (!uploadedMusic) {
     row.innerHTML = `
-      <input type="file" id="music-upload-input" accept="audio/*" style="display:none">
-      <button type="button" class="music-upload-btn" id="music-upload-btn">📤 或上傳自己的音樂檔案</button>
+      <input type="file" id="music-upload-input" accept="audio/*,video/*" style="display:none">
+      <button type="button" class="music-upload-btn" id="music-upload-btn">📤 或上傳自己的音樂／影片檔案（會自動擷取影片中的音訊）</button>
     `;
     document.getElementById('music-upload-btn').addEventListener('click', () => {
       document.getElementById('music-upload-input').click();
@@ -1105,9 +1105,9 @@ function onMusicFileChosen(e) {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  const MAX_MB = 30;
+  const MAX_MB = 300;
   if (file.size > MAX_MB * 1024 * 1024) {
-    alert(`音樂檔案太大（超過 ${MAX_MB}MB），請選擇較小的檔案`);
+    alert(`檔案太大（超過 ${MAX_MB}MB），請選擇較小的音樂或影片檔案`);
     return;
   }
   if (uploadedMusic) URL.revokeObjectURL(uploadedMusic.url);
