@@ -292,6 +292,35 @@
   }
   .music-loading { font-size: 1.3rem; color: var(--muted); padding: 16px 0; }
 
+  /* ── 上傳自己的音樂 ── */
+  .music-upload-row { margin-bottom: 18px; }
+  .music-upload-btn {
+    width: 100%;
+    border: 2.5px dashed var(--border);
+    border-radius: 14px;
+    background: #fffaf5;
+    padding: 14px 10px;
+    font-family: 'Iansui', 'Noto Serif TC', serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color .2s, background .2s, color .2s;
+  }
+  .music-upload-btn:hover { border-color: var(--accent2); color: var(--accent2); background: #fff5ec; }
+  .music-upload-card {
+    padding: 12px 14px;
+    display: flex; flex-direction: row; align-items: center; gap: 10px;
+  }
+  .music-upload-card .music-icon { font-size: 1.6rem; flex: none; }
+  .music-upload-card .music-name { flex: 1; text-align: left; font-size: .95rem; }
+  .music-upload-card .play-btn { flex: none; margin-top: 0; }
+  .music-upload-card .remove-btn {
+    flex: none; background: none; border: none; font-size: 1.2rem;
+    cursor: pointer; color: var(--muted); padding: 4px;
+  }
+  .music-upload-card .remove-btn:hover { color: var(--accent); }
+
   /* ── 輸出 ── */
   #make-btn {
     width: 100%;
@@ -505,6 +534,7 @@
   <div class="card">
     <div class="step-label"><div class="step-num">2</div>選擇背景音樂</div>
     <h2>請選一首歌曲</h2>
+    <div class="music-upload-row" id="music-upload-row"></div>
     <div class="music-tabs" id="music-tabs"></div>
     <div class="music-grid" id="music-grid">
       <p class="music-loading">🎵 載入音樂庫中⋯⋯</p>
@@ -585,6 +615,7 @@ const CATEGORY_ORDER = ['傳福音','福音','愛','同伴','牧養','奉獻','�
 // photos[i] = { type:'photo'|'video'|'collage', ... }
 let photos = [];
 let selectedMusic = null;
+let uploadedMusic = null; // { name, url } 使用者自行上傳的音樂（url 為 blob object URL）
 let audioPlayer = null;
 let collageMode = false;
 let collageSelected = new Set();
@@ -1021,6 +1052,74 @@ function selectMusic(card, name, url) {
   updateSummary(); checkReady();
 }
 
+// ── 上傳自己的音樂 ──
+function renderMusicUploadRow() {
+  const row = document.getElementById('music-upload-row');
+  if (!uploadedMusic) {
+    row.innerHTML = `
+      <input type="file" id="music-upload-input" accept="audio/*" style="display:none">
+      <button type="button" class="music-upload-btn" id="music-upload-btn">📤 或上傳自己的音樂檔案</button>
+    `;
+    document.getElementById('music-upload-btn').addEventListener('click', () => {
+      document.getElementById('music-upload-input').click();
+    });
+    document.getElementById('music-upload-input').addEventListener('change', onMusicFileChosen);
+    return;
+  }
+  const isSelected = selectedMusic && selectedMusic.url === uploadedMusic.url;
+  row.innerHTML = `
+    <div class="music-card music-upload-card${isSelected ? ' selected' : ''}" id="music-upload-card">
+      <span class="music-icon">📤</span>
+      <div class="music-name" id="music-upload-name"></div>
+      <button type="button" class="play-btn" title="試聽 20 秒">▶</button>
+      <button type="button" class="remove-btn" title="移除已上傳的音樂">✕</button>
+      <div class="music-preview-bar"></div>
+    </div>
+  `;
+  document.getElementById('music-upload-name').textContent = uploadedMusic.name;
+  const card = document.getElementById('music-upload-card');
+  card.addEventListener('click', e => {
+    const playBtn = e.target.closest('.play-btn');
+    if (playBtn) { togglePlay(card, uploadedMusic.url, playBtn); return; }
+    if (e.target.closest('.remove-btn')) { removeUploadedMusic(); return; }
+    selectUploadedMusic();
+  });
+}
+
+function selectUploadedMusic() {
+  if (!uploadedMusic) return;
+  document.querySelectorAll('.music-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('music-upload-card')?.classList.add('selected');
+  selectedMusic = { name: uploadedMusic.name, url: uploadedMusic.url, isUpload: true };
+  updateSummary(); checkReady();
+}
+
+function removeUploadedMusic() {
+  if (!uploadedMusic) return;
+  stopAllPreview();
+  const wasSelected = selectedMusic && selectedMusic.url === uploadedMusic.url;
+  URL.revokeObjectURL(uploadedMusic.url);
+  uploadedMusic = null;
+  if (wasSelected) selectedMusic = null;
+  renderMusicUploadRow();
+  updateSummary(); checkReady();
+}
+
+function onMusicFileChosen(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const MAX_MB = 30;
+  if (file.size > MAX_MB * 1024 * 1024) {
+    alert(`音樂檔案太大（超過 ${MAX_MB}MB），請選擇較小的檔案`);
+    return;
+  }
+  if (uploadedMusic) URL.revokeObjectURL(uploadedMusic.url);
+  uploadedMusic = { name: file.name, url: URL.createObjectURL(file) };
+  renderMusicUploadRow();
+  selectUploadedMusic();
+}
+
 function stopAllPreview() {
   if (audioPlayer) { audioPlayer.pause(); audioPlayer = null; }
   clearTimeout(previewTimerId);
@@ -1074,7 +1173,7 @@ function updateSummary() {
     if (withText > 0) lines.push(`✍️ 有文字：${withText} 個`);
     if (vidCount > 0)  lines.push(`🔇 影片段落音樂會自動降低音量`);
   }
-  if (selectedMusic) lines.push(`🎵 音樂：${selectedMusic.name.replace(/\.mp3$/i,'')}`);
+  if (selectedMusic) lines.push(`🎵 音樂：${selectedMusic.name.replace(/\.[a-z0-9]+$/i,'')}`);
   const introTitle = (document.getElementById('intro-title')?.value || '').trim();
   const hasIntroPhoto = !!introPhotoData;
   if (hasIntroPhoto || introTitle) {
@@ -1726,6 +1825,9 @@ async function makeVideoRemote() {
   setStatus('info', '⏳ 正在處理素材，請稍候⋯⋯');
 
   try {
+    if (selectedMusic.isUpload) {
+      throw new Error('您上傳的音樂目前僅支援本機合成，此裝置的瀏覽器不支援本機合成，請改用音樂庫中的詩歌，或換一台較新的手機/瀏覽器再試');
+    }
     const mediaData = await Promise.all(photos.map(p => {
       if (p.type === 'video') {
         return fetch(p.dataUrl).then(r => r.arrayBuffer()).then(buf => {
@@ -1879,6 +1981,7 @@ function compressImage(dataUrl) {
 
 // 初始化
 loadMusicList();
+renderMusicUploadRow();
 updateSummary();
 
 // ── PWA ───────────────────────────────────────────────
