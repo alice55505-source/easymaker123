@@ -2074,9 +2074,12 @@ function isLineApp() {
   return /Line\//i.test(navigator.userAgent);
 }
 
+const PWA_DISMISS_KEY = 'phv_pwa_dismissed';
+
 function showPWABanner() {
   if (isStandalone()) return;
   if (document.getElementById('pwa-overlay')) return;
+  if (localStorage.getItem(PWA_DISMISS_KEY)) return; // 使用者已關過，不再每次開啟都擋住畫面
 
   let inner = '';
   if (deferredPrompt) {
@@ -2146,6 +2149,7 @@ function triggerInstall() {
 function dismissPWA() {
   const el = document.getElementById('pwa-overlay');
   if (el) el.remove();
+  try { localStorage.setItem(PWA_DISMISS_KEY, '1'); } catch (e) {}
 }
 
 window.addEventListener('beforeinstallprompt', e => {
