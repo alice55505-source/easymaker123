@@ -518,7 +518,7 @@
       <div class="icon">🖼️</div>
       <p>選擇照片或影片</p>
       <p style="font-size:1.1rem;margin-top:6px">（可以一次選很多張）</p>
-      <input type="file" id="photo-input" accept="image/*,video/*" multiple>
+      <input type="file" id="photo-input" accept="image/*,video/*,.mp4,.mov,.m4v,.3gp,.avi,.webm,.mkv,.ts,.m2ts,.wmv,.flv" multiple>
     </div>
     <div id="photo-list"></div>
     <button class="collage-mode-btn" id="collage-mode-btn" onclick="toggleCollageMode()">🖼️ 建立照片拼貼</button>
@@ -641,9 +641,12 @@ function addPhotos(files) {
   let needRender = false;
 
   arr.forEach(file => {
-    const isVideo = file.type.startsWith('video/') || file.name.match(/\.(mp4|mov|avi|webm|mkv|m4v)$/i);
-    const isImage = file.type.startsWith('image/') || file.name.match(/\.(jpe?g|png|gif|webp|heic)$/i);
-    if (!isVideo && !isImage) return;
+    const isVideo = file.type.startsWith('video/') || file.name.match(/\.(mp4|mov|avi|webm|mkv|m4v|3gp|ts|m2ts|wmv|flv)$/i);
+    const isImage = file.type.startsWith('image/') || file.name.match(/\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i);
+    if (!isVideo && !isImage) {
+      alert(`無法辨識的檔案「${file.name}」（類型：${file.type || '未知'}），已略過`);
+      return;
+    }
 
     if (isVideo) {
       let url;
