@@ -627,7 +627,18 @@ const dropZone  = document.getElementById('drop-zone');
 const photoInput = document.getElementById('photo-input');
 
 dropZone.addEventListener('click', () => photoInput.click());
-photoInput.addEventListener('change', e => addPhotos(e.target.files));
+photoInput.addEventListener('change', e => {
+  const files = e.target.files;
+  if (!files || files.length === 0) {
+    alert('沒有偵測到任何選取的檔案，請再試一次');
+    return;
+  }
+  try {
+    addPhotos(files);
+  } catch (err) {
+    alert('加入素材時發生錯誤：' + err.message);
+  }
+});
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', e => {
@@ -685,8 +696,12 @@ function addPhotos(files) {
       vid.load();
     } else {
       // blob URL 取代 FileReader：同步、省記憶體（不轉 base64）
-      photos.push({ type: 'photo', file, dataUrl: URL.createObjectURL(file), name: file.name, text: '' });
-      needRender = true;
+      try {
+        photos.push({ type: 'photo', file, dataUrl: URL.createObjectURL(file), name: file.name, text: '' });
+        needRender = true;
+      } catch (err) {
+        alert(`無法讀取照片「${file.name}」：${err.message}`);
+      }
     }
   });
 
