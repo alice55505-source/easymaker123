@@ -646,23 +646,37 @@ function addPhotos(files) {
     if (!isVideo && !isImage) return;
 
     if (isVideo) {
-      const url = URL.createObjectURL(file);
+      let url;
+      try {
+        url = URL.createObjectURL(file);
+      } catch (err) {
+        alert(`無法讀取影片「${file.name}」：${err.message}`);
+        return;
+      }
       const vid = document.createElement('video');
       vid.preload = 'metadata';
       let opened = false;
       const doOpen = () => {
         if (opened) return;
         opened = true;
-        openTrimmer(file, url, result => {
-          photos.push({ type: 'video', file, dataUrl: result.blobUrl,
-            name: file.name, text: '',
-            duration: result.duration, mimeType: result.mimeType,
-            includeAudio: result.includeAudio,
-            trimStart: result.trimStart || 0 });
-          renderPhotoList();
-        });
+        try {
+          openTrimmer(file, url, result => {
+            photos.push({ type: 'video', file, dataUrl: result.blobUrl,
+              name: file.name, text: '',
+              duration: result.duration, mimeType: result.mimeType,
+              includeAudio: result.includeAudio,
+              trimStart: result.trimStart || 0 });
+            renderPhotoList();
+          });
+        } catch (err) {
+          alert(`影片「${file.name}」開啟失敗：${err.message}`);
+        }
       };
       vid.onloadedmetadata = doOpen;
+      vid.onerror = () => {
+        if (opened) return;
+        alert(`影片「${file.name}」讀取失敗，可能是格式不支援或檔案過大，請換一個檔案再試`);
+      };
       setTimeout(doOpen, 6000);
       vid.src = url;
       vid.load();
