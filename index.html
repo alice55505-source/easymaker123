@@ -282,7 +282,6 @@
     display: flex; align-items: center; justify-content: center;
     gap: 4px; white-space: nowrap;
   }
-  .play-btn .cd { font-size: .8rem; opacity: .8; }
   .music-preview-bar {
     position: absolute; bottom: 0; left: 0;
     height: 4px; width: 0%;
@@ -622,9 +621,6 @@ let collageSelected = new Set();
 let dragSrcIdx = null;
 let introPhotoData = null;
 let outroPhotoData = null;
-const PREVIEW_SEC = 20;
-let previewTimerId = null;
-let previewIntervalId = null;
 
 // ── 照片上傳 ──
 const dropZone  = document.getElementById('drop-zone');
@@ -1030,7 +1026,7 @@ function renderMusicGrid() {
     card.innerHTML = `
       <span class="music-icon">🎵</span>
       <div class="music-name">${formatSongName(s.name)}</div>
-      <button class="play-btn" title="試聽 20 秒">▶</button>
+      <button class="play-btn" title="試聽">▶</button>
       <div class="music-preview-bar"></div>
     `;
     // 如果已選中此歌，恢復 selected 樣式
@@ -1071,7 +1067,7 @@ function renderMusicUploadRow() {
     <div class="music-card music-upload-card${isSelected ? ' selected' : ''}" id="music-upload-card">
       <span class="music-icon">📤</span>
       <div class="music-name" id="music-upload-name"></div>
-      <button type="button" class="play-btn" title="試聽 20 秒">▶</button>
+      <button type="button" class="play-btn" title="試聽">▶</button>
       <button type="button" class="remove-btn" title="移除已上傳的音樂">✕</button>
       <div class="music-preview-bar"></div>
     </div>
@@ -1122,9 +1118,6 @@ function onMusicFileChosen(e) {
 
 function stopAllPreview() {
   if (audioPlayer) { audioPlayer.pause(); audioPlayer = null; }
-  clearTimeout(previewTimerId);
-  clearInterval(previewIntervalId);
-  previewTimerId = previewIntervalId = null;
   document.querySelectorAll('.play-btn').forEach(b => b.textContent = '▶');
   document.querySelectorAll('.music-preview-bar').forEach(el => {
     el.style.transition = 'none'; el.style.width = '0%';
@@ -1139,21 +1132,14 @@ function togglePlay(card, url, btn) {
   audioPlayer._url = url;
   audioPlayer.play();
   const bar = card.querySelector('.music-preview-bar');
-  requestAnimationFrame(() => {
-    bar.style.transition = 'none'; bar.style.width = '0%';
-    requestAnimationFrame(() => {
-      bar.style.transition = `width ${PREVIEW_SEC}s linear`;
-      bar.style.width = '100%';
-    });
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+  audioPlayer.addEventListener('timeupdate', () => {
+    if (!audioPlayer.duration) return;
+    bar.style.transition = 'width .2s linear';
+    bar.style.width = (audioPlayer.currentTime / audioPlayer.duration * 100) + '%';
   });
-  let rem = PREVIEW_SEC;
-  btn.innerHTML = `⏸ <span class="cd">${rem}s</span>`;
-  previewIntervalId = setInterval(() => {
-    rem--;
-    if (rem > 0) btn.innerHTML = `⏸ <span class="cd">${rem}s</span>`;
-    else btn.textContent = '▶';
-  }, 1000);
-  previewTimerId = setTimeout(stopAllPreview, PREVIEW_SEC * 1000);
+  btn.textContent = '⏸';
   audioPlayer.addEventListener('ended', stopAllPreview);
 }
 
