@@ -669,10 +669,15 @@ function addPhotos(files) {
       }
       const vid = document.createElement('video');
       vid.preload = 'metadata';
+      vid.muted = true;
+      vid.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;';
+      document.body.appendChild(vid); // 部分手機瀏覽器對未掛載到畫面上的 video 不會觸發 loadedmetadata
       let opened = false;
+      const cleanup = () => vid.remove();
       const doOpen = () => {
         if (opened) return;
         opened = true;
+        cleanup();
         try {
           openTrimmer(file, url, result => {
             photos.push({ type: 'video', file, dataUrl: result.blobUrl,
@@ -689,6 +694,9 @@ function addPhotos(files) {
       vid.onloadedmetadata = doOpen;
       vid.onerror = () => {
         if (opened) return;
+        opened = true;
+        cleanup();
+        URL.revokeObjectURL(url);
         alert(`影片「${file.name}」讀取失敗，可能是格式不支援或檔案過大，請換一個檔案再試`);
       };
       setTimeout(doOpen, 6000);
@@ -2175,13 +2183,30 @@ function openTrimmer(file, objectUrl, onDone) {
   _trimFile=file; _trimUrl=objectUrl; _trimCb=onDone;
   const vid=document.getElementById('tv');
   document.getElementById('trimmer-modal').style.display='flex';
+
+  let settled=false;
+  const useUntrimmed=()=>{
+    if(settled) return;
+    settled=true;
+    clearTimeout(failTimer);
+    vid.onloadedmetadata=null; vid.onerror=null;
+    closeTrimmer();
+    if(_trimCb) _trimCb({blobUrl:objectUrl, mimeType:file?.type||'video/mp4', duration:4, includeAudio:true, trimStart:0});
+  };
+  // 影片在剪輯器內讀取失敗或逾時，直接改用原始影片（不裁切），避免畫面卡住沒反應
+  const failTimer=setTimeout(useUntrimmed, 8000);
+
   vid.onloadedmetadata=()=>{
+    if(settled) return;
+    settled=true;
+    clearTimeout(failTimer);
     _trimTotal=vid.duration;
     _trimStart=0;
     _trimEnd=Math.min(_trimTotal, TRIM_WIN);
     updateTrimUI();
     vid.currentTime=0;
   };
+  vid.onerror=useUntrimmed;
   vid.src=objectUrl;
   vid.load(); // iOS 需要明確呼叫 load() 才會觸發 onloadedmetadata
 }
