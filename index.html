@@ -632,26 +632,9 @@ const photoInput = document.getElementById('photo-input');
 function safeStorageGet(kind, key) {
   try { return (kind === 'session' ? sessionStorage : localStorage).getItem(key); } catch (e) { return null; }
 }
-function safeStorageSet(kind, key, val) {
-  try { (kind === 'session' ? sessionStorage : localStorage).setItem(key, val); } catch (e) {}
-}
-function safeStorageRemove(kind, key) {
-  try { (kind === 'session' ? sessionStorage : localStorage).removeItem(key); } catch (e) {}
-}
 
-// 診斷用：手機在挑選檔案時如果把分頁整頁重新載入，選好的檔案會遺失，
-// 且不會觸發 change，畫面上完全看不出原因。用 sessionStorage 偵測這種情況。
-if (safeStorageGet('session', 'phv_picking') === '1') {
-  safeStorageRemove('session', 'phv_picking');
-  alert('偵測到：選擇照片時，瀏覽器把網頁重新整理了，導致選好的檔案遺失（手機記憶體不足時常發生）。\n請再試一次，建議選擇「相機」或手機本機相簿（不要選雲端相簿），檔案較小、挑選較快，比較不會被中斷。');
-}
-
-dropZone.addEventListener('click', () => {
-  safeStorageSet('session', 'phv_picking', '1');
-  photoInput.click();
-});
+dropZone.addEventListener('click', () => photoInput.click());
 photoInput.addEventListener('change', e => {
-  safeStorageRemove('session', 'phv_picking');
   const files = e.target.files;
   if (!files || files.length === 0) {
     alert('沒有偵測到任何選取的檔案，請再試一次');
