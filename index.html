@@ -2173,7 +2173,8 @@ showPWABanner();
 let _trimFile=null, _trimUrl=null, _trimCb=null;
 let _trimStart=0, _trimEnd=0, _trimTotal=0;
 let _trimEventsReady=false;
-const TRIM_WIN=15; // 固定視窗長度（秒）
+const TRIM_MAX=15; // 選取片段最長秒數
+const TRIM_MIN=1;  // 選取片段最短秒數
 
 function fmtT(s){
   const m=Math.floor(s/60), ss=Math.floor(s%60).toString().padStart(2,'0');
@@ -2213,7 +2214,7 @@ function openTrimmer(file, objectUrl, onDone) {
     clearTimeout(failTimer);
     _trimTotal=vid.duration;
     _trimStart=0;
-    _trimEnd=Math.min(_trimTotal, TRIM_WIN);
+    _trimEnd=Math.min(_trimTotal, TRIM_MAX);
     updateTrimUI();
     vid.currentTime=0;
   };
@@ -2232,42 +2233,66 @@ function setupTrimmerEvents(){
   const vid=document.getElementById('tv');
   const timeline=document.getElementById('ttimeline');
   const sel=document.getElementById('tsel');
+  const lh=document.getElementById('tsel-lh');
+  const rh=document.getElementById('tsel-rh');
 
-  let dragging=false, dragStartX=0, dragStartTrimStart=0;
+  let mode=null; // 'move' | 'left' | 'right'
+  let dragStartX=0, dragStartTrimStart=0, dragStartTrimEnd=0;
 
-  sel.addEventListener('pointerdown', e=>{
-    dragging=true;
+  function beginDrag(e, m){
+    mode=m;
     dragStartX=e.clientX;
     dragStartTrimStart=_trimStart;
+    dragStartTrimEnd=_trimEnd;
     sel.setPointerCapture(e.pointerId);
-    sel.style.cursor='grabbing';
+    e.stopPropagation();
     e.preventDefault();
+  }
+
+  sel.addEventListener('pointerdown', e=>{
+    beginDrag(e, 'move');
+    sel.style.cursor='grabbing';
   });
+  lh.addEventListener('pointerdown', e=>beginDrag(e, 'left'));
+  rh.addEventListener('pointerdown', e=>beginDrag(e, 'right'));
 
   sel.addEventListener('pointermove', e=>{
-    if(!dragging) return;
+    if(!mode) return;
     const rect=timeline.getBoundingClientRect();
     const dSec=((e.clientX-dragStartX)/rect.width)*_trimTotal;
-    const maxStart=Math.max(0, _trimTotal-TRIM_WIN);
-    _trimStart=Math.max(0, Math.min(maxStart, dragStartTrimStart+dSec));
-    _trimEnd=Math.min(_trimTotal, _trimStart+TRIM_WIN);
+
+    if(mode==='move'){
+      const winLen=dragStartTrimEnd-dragStartTrimStart;
+      const maxStart=Math.max(0, _trimTotal-winLen);
+      _trimStart=Math.max(0, Math.min(maxStart, dragStartTrimStart+dSec));
+      _trimEnd=Math.min(_trimTotal, _trimStart+winLen);
+    } else if(mode==='left'){
+      const lower=Math.max(0, dragStartTrimEnd-TRIM_MAX);
+      const upper=dragStartTrimEnd-TRIM_MIN;
+      _trimStart=Math.max(lower, Math.min(upper, dragStartTrimStart+dSec));
+    } else if(mode==='right'){
+      const lower=dragStartTrimStart+TRIM_MIN;
+      const upper=Math.min(_trimTotal, dragStartTrimStart+TRIM_MAX);
+      _trimEnd=Math.max(lower, Math.min(upper, dragStartTrimEnd+dSec));
+    }
     updateTrimUI();
-    vid.currentTime=_trimStart;
+    vid.currentTime = mode==='right' ? Math.max(_trimStart, _trimEnd-0.3) : _trimStart;
   });
 
   sel.addEventListener('pointerup', ()=>{
-    dragging=false;
+    mode=null;
     sel.style.cursor='grab';
   });
 
-  // 點時間軸空白處也可以跳到該位置
+  // 點時間軸空白處也可以跳到該位置（維持目前選取長度）
   timeline.addEventListener('pointerdown', e=>{
     if(e.target===sel || sel.contains(e.target)) return;
+    const winLen=_trimEnd-_trimStart;
     const rect=timeline.getBoundingClientRect();
     const clickSec=((e.clientX-rect.left)/rect.width)*_trimTotal;
-    const maxStart=Math.max(0, _trimTotal-TRIM_WIN);
-    _trimStart=Math.max(0, Math.min(maxStart, clickSec-TRIM_WIN/2));
-    _trimEnd=Math.min(_trimTotal, _trimStart+TRIM_WIN);
+    const maxStart=Math.max(0, _trimTotal-winLen);
+    _trimStart=Math.max(0, Math.min(maxStart, clickSec-winLen/2));
+    _trimEnd=Math.min(_trimTotal, _trimStart+winLen);
     updateTrimUI();
     vid.currentTime=_trimStart;
   });
@@ -2526,6 +2551,12 @@ function confirmCrop() {
     <div id="ttimeline" style="position:relative;height:52px;background:#2a2a3e;border-radius:12px;margin:16px 0 8px;touch-action:none;overflow:hidden;">
       <div id="tsel" style="position:absolute;top:0;bottom:0;background:linear-gradient(135deg,#c0392b,#e67e22);border-radius:12px;cursor:grab;display:flex;align-items:center;justify-content:center;min-width:24px;">
         <span style="color:rgba(255,255,255,0.6);font-size:0.8rem;pointer-events:none;user-select:none;letter-spacing:1px;">⟵ 拖移選片段 ⟶</span>
+        <div id="tsel-lh" style="position:absolute;left:-10px;top:0;bottom:0;width:28px;cursor:ew-resize;display:flex;align-items:center;justify-content:center;touch-action:none;">
+          <div style="width:5px;height:60%;background:rgba(255,255,255,0.85);border-radius:3px;"></div>
+        </div>
+        <div id="tsel-rh" style="position:absolute;right:-10px;top:0;bottom:0;width:28px;cursor:ew-resize;display:flex;align-items:center;justify-content:center;touch-action:none;">
+          <div style="width:5px;height:60%;background:rgba(255,255,255,0.85);border-radius:3px;"></div>
+        </div>
       </div>
     </div>
 
