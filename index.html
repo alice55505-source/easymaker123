@@ -653,8 +653,6 @@ dropZone.addEventListener('click', () => {
 photoInput.addEventListener('change', e => {
   safeStorageRemove('session', 'phv_picking');
   const files = e.target.files;
-  alert(`偵測到 change 事件：收到 ${files ? files.length : 0} 個檔案` +
-    (files && files.length ? '\n' + Array.from(files).map(f => `・${f.name || '(無檔名)'} / ${f.type || '(無類型)'} / ${(f.size/1024).toFixed(0)}KB`).join('\n') : ''));
   if (!files || files.length === 0) {
     alert('沒有偵測到任何選取的檔案，請再試一次');
     return;
