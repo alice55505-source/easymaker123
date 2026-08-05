@@ -626,21 +626,32 @@ let outroPhotoData = null;
 const dropZone  = document.getElementById('drop-zone');
 const photoInput = document.getElementById('photo-input');
 
+// 部分瀏覽器（隱私模式、封鎖 Cookie 等設定）連「讀取 sessionStorage/localStorage 這個
+// 物件本身」都會直接丟出例外（不是呼叫方法才炸），所以連取用物件的動作都要包進 try 裡，
+// 不能寫成參數（參數會在呼叫前先求值，try 就保護不到）。
+function safeStorageGet(kind, key) {
+  try { return (kind === 'session' ? sessionStorage : localStorage).getItem(key); } catch (e) { return null; }
+}
+function safeStorageSet(kind, key, val) {
+  try { (kind === 'session' ? sessionStorage : localStorage).setItem(key, val); } catch (e) {}
+}
+function safeStorageRemove(kind, key) {
+  try { (kind === 'session' ? sessionStorage : localStorage).removeItem(key); } catch (e) {}
+}
+
 // 診斷用：手機在挑選檔案時如果把分頁整頁重新載入，選好的檔案會遺失，
 // 且不會觸發 change，畫面上完全看不出原因。用 sessionStorage 偵測這種情況。
-(function checkPickerReload() {
-  if (sessionStorage.getItem('phv_picking') === '1') {
-    sessionStorage.removeItem('phv_picking');
-    alert('偵測到：選擇照片時，瀏覽器把網頁重新整理了，導致選好的檔案遺失（手機記憶體不足時常發生）。\n請再試一次，建議選擇「相機」或手機本機相簿（不要選雲端相簿），檔案較小、挑選較快，比較不會被中斷。');
-  }
-})();
+if (safeStorageGet('session', 'phv_picking') === '1') {
+  safeStorageRemove('session', 'phv_picking');
+  alert('偵測到：選擇照片時，瀏覽器把網頁重新整理了，導致選好的檔案遺失（手機記憶體不足時常發生）。\n請再試一次，建議選擇「相機」或手機本機相簿（不要選雲端相簿），檔案較小、挑選較快，比較不會被中斷。');
+}
 
 dropZone.addEventListener('click', () => {
-  sessionStorage.setItem('phv_picking', '1');
+  safeStorageSet('session', 'phv_picking', '1');
   photoInput.click();
 });
 photoInput.addEventListener('change', e => {
-  sessionStorage.removeItem('phv_picking');
+  safeStorageRemove('session', 'phv_picking');
   const files = e.target.files;
   alert(`偵測到 change 事件：收到 ${files ? files.length : 0} 個檔案` +
     (files && files.length ? '\n' + Array.from(files).map(f => `・${f.name || '(無檔名)'} / ${f.type || '(無類型)'} / ${(f.size/1024).toFixed(0)}KB`).join('\n') : ''));
@@ -2094,7 +2105,7 @@ const PWA_DISMISS_KEY = 'phv_pwa_dismissed';
 function showPWABanner() {
   if (isStandalone()) return;
   if (document.getElementById('pwa-overlay')) return;
-  if (localStorage.getItem(PWA_DISMISS_KEY)) return; // 使用者已關過，不再每次開啟都擋住畫面
+  if (safeStorageGet('local', PWA_DISMISS_KEY)) return; // 使用者已關過，不再每次開啟都擋住畫面
 
   let inner = '';
   if (deferredPrompt) {
