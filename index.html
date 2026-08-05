@@ -2173,7 +2173,7 @@ showPWABanner();
 let _trimFile=null, _trimUrl=null, _trimCb=null;
 let _trimStart=0, _trimEnd=0, _trimTotal=0;
 let _trimEventsReady=false;
-const TRIM_WIN=8; // 固定視窗長度（秒）
+const TRIM_WIN=15; // 固定視窗長度（秒）
 
 function fmtT(s){
   const m=Math.floor(s/60), ss=Math.floor(s%60).toString().padStart(2,'0');
@@ -2530,7 +2530,7 @@ function confirmCrop() {
     </div>
 
     <div style="text-align:center;font-size:0.95rem;color:#e67e22;font-weight:700;margin-bottom:12px;">
-      <span id="twininfo">0:00 ～ 0:08（8.0s）</span>
+      <span id="twininfo">0:00 ～ 0:15（15.0s）</span>
     </div>
 
     <!-- 是否保留素材聲音 -->
