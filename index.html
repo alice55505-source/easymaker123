@@ -2549,13 +2549,13 @@ function confirmCrop() {
 
     <!-- 直接拖移的時間軸 -->
     <div id="ttimeline" style="position:relative;height:52px;background:#2a2a3e;border-radius:12px;margin:16px 0 8px;touch-action:none;overflow:hidden;">
-      <div id="tsel" style="position:absolute;top:0;bottom:0;background:linear-gradient(135deg,#c0392b,#e67e22);border-radius:12px;cursor:grab;display:flex;align-items:center;justify-content:center;min-width:24px;">
-        <span style="color:rgba(255,255,255,0.6);font-size:0.8rem;pointer-events:none;user-select:none;letter-spacing:1px;">⟵ 拖移選片段 ⟶</span>
-        <div id="tsel-lh" style="position:absolute;left:-10px;top:0;bottom:0;width:28px;cursor:ew-resize;display:flex;align-items:center;justify-content:center;touch-action:none;">
-          <div style="width:5px;height:60%;background:rgba(255,255,255,0.85);border-radius:3px;"></div>
+      <div id="tsel" style="position:absolute;top:0;bottom:0;background:linear-gradient(135deg,#c0392b,#e67e22);border-radius:12px;cursor:grab;display:flex;align-items:center;justify-content:center;min-width:72px;overflow:hidden;">
+        <span style="color:rgba(255,255,255,0.6);font-size:0.75rem;pointer-events:none;user-select:none;letter-spacing:1px;white-space:nowrap;">⟵ 移動 ⟶</span>
+        <div id="tsel-lh" style="position:absolute;left:0;top:0;bottom:0;width:22px;cursor:ew-resize;display:flex;align-items:center;justify-content:center;touch-action:none;background:rgba(0,0,0,0.15);">
+          <div style="width:4px;height:50%;background:rgba(255,255,255,0.9);border-radius:3px;"></div>
         </div>
-        <div id="tsel-rh" style="position:absolute;right:-10px;top:0;bottom:0;width:28px;cursor:ew-resize;display:flex;align-items:center;justify-content:center;touch-action:none;">
-          <div style="width:5px;height:60%;background:rgba(255,255,255,0.85);border-radius:3px;"></div>
+        <div id="tsel-rh" style="position:absolute;right:0;top:0;bottom:0;width:22px;cursor:ew-resize;display:flex;align-items:center;justify-content:center;touch-action:none;background:rgba(0,0,0,0.15);">
+          <div style="width:4px;height:50%;background:rgba(255,255,255,0.9);border-radius:3px;"></div>
         </div>
       </div>
     </div>
