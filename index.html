@@ -232,6 +232,31 @@
   .photo-crop:hover { color: #27ae60; background: #e8f8f0; }
   .photo-crop.cropped { color: #27ae60; }
 
+  .photo-dur-wrap {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+    background: #fff;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 3px 6px;
+  }
+  .photo-dur-input {
+    width: 38px;
+    border: none;
+    outline: none;
+    background: none;
+    font-family: inherit;
+    font-size: .9rem;
+    text-align: right;
+    color: var(--text);
+    -moz-appearance: textfield;
+  }
+  .photo-dur-input::-webkit-inner-spin-button,
+  .photo-dur-input::-webkit-outer-spin-button { opacity: 1; }
+  .photo-dur-unit { font-size: .8rem; color: var(--muted); }
+
   .hint { font-size: 1.1rem; color: var(--muted); margin-top: 12px; line-height: 1.7; }
 
   /* ── 音樂分類 tabs ── */
@@ -712,7 +737,7 @@ function addPhotos(files) {
     } else {
       // blob URL 取代 FileReader：同步、省記憶體（不轉 base64）
       try {
-        photos.push({ type: 'photo', file, dataUrl: URL.createObjectURL(file), name: file.name, text: '' });
+        photos.push({ type: 'photo', file, dataUrl: URL.createObjectURL(file), name: file.name, text: '', duration: 4 });
         needRender = true;
       } catch (err) {
         alert(`無法讀取照片「${file.name}」：${err.message}`);
@@ -756,6 +781,10 @@ function renderPhotoList() {
           <button class="collage-split-btn" data-col="${i}" data-dir="1" title="左邊放大">▶</button>
         </div>` : ''}
         <span class="photo-fname">拼貼<span class="collage-badge">${p.items.length}張</span></span>
+        <div class="photo-dur-wrap" title="停留秒數">
+          <input type="number" class="photo-dur-input" min="1" max="20" step="0.5" value="${p.duration || 4}" data-idx="${i}">
+          <span class="photo-dur-unit">秒</span>
+        </div>
         <div class="photo-text-wrap">
           <input type="text"
             class="photo-text-input${p.text ? ' has-text' : ''}"
@@ -769,6 +798,14 @@ function renderPhotoList() {
         photos[this.dataset.idx].text = this.value;
         this.classList.toggle('has-text', this.value.trim().length > 0);
         updateSummary();
+      });
+      row.querySelector('.photo-dur-input').addEventListener('click', e => e.stopPropagation());
+      row.querySelector('.photo-dur-input').addEventListener('change', function() {
+        let v = parseFloat(this.value);
+        if (!isFinite(v) || v <= 0) v = 4;
+        v = Math.max(1, Math.min(20, v));
+        photos[+this.dataset.idx].duration = v;
+        renderPhotoList();
       });
       row.querySelectorAll('.collage-item-crop').forEach(btn => {
         btn.addEventListener('click', function(e) {
@@ -796,7 +833,7 @@ function renderPhotoList() {
       row.querySelector('.photo-del').addEventListener('click', function(e) {
         e.stopPropagation();
         const ci = +this.dataset.idx;
-        const items = photos[ci].items.map(it => ({ type: 'photo', file: it.file, dataUrl: it.dataUrl, name: it.name, text: '' }));
+        const items = photos[ci].items.map(it => ({ type: 'photo', file: it.file, dataUrl: it.dataUrl, name: it.name, text: '', duration: photos[ci].duration || 4 }));
         photos.splice(ci, 1, ...items);
         renderPhotoList(); updateSummary(); checkReady();
       });
@@ -809,6 +846,11 @@ function renderPhotoList() {
         ? `<video class="photo-thumb" src="${p.dataUrl}" muted preload="metadata" style="object-fit:cover;"></video>`
         : `<img class="photo-thumb" src="${p.dataUrl}" alt="">`;
       const badge = isVid ? `<span style="font-size:.75rem;background:#333;color:#fff;border-radius:4px;padding:1px 5px;margin-left:4px;">🎬 ${dur}s</span>` : '';
+      const durCtrl = !isVid ? `
+        <div class="photo-dur-wrap" title="停留秒數">
+          <input type="number" class="photo-dur-input" min="1" max="20" step="0.5" value="${p.duration || 4}" data-idx="${i}">
+          <span class="photo-dur-unit">秒</span>
+        </div>` : '';
       const isSelected = collageMode && collageSelected.has(i);
       const selectable = collageMode && !isVid;
       row.className = 'photo-row' + (selectable ? ' collage-selectable' : '') + (isSelected ? ' collage-selected' : '');
@@ -818,6 +860,7 @@ function renderPhotoList() {
         <span class="photo-num">${i + 1}</span>
         ${thumb}
         <span class="photo-fname" title="${p.name}">${p.name}${badge}</span>
+        ${durCtrl}
         <div class="photo-text-wrap">
           <input type="text"
             class="photo-text-input${p.text ? ' has-text' : ''}"
@@ -839,6 +882,17 @@ function renderPhotoList() {
         cropBtn.addEventListener('click', function(e) {
           e.stopPropagation();
           openCropModal(+this.dataset.idx);
+        });
+      }
+      const durInput = row.querySelector('.photo-dur-input');
+      if (durInput) {
+        durInput.addEventListener('click', e => e.stopPropagation());
+        durInput.addEventListener('change', function() {
+          let v = parseFloat(this.value);
+          if (!isFinite(v) || v <= 0) v = 4;
+          v = Math.max(1, Math.min(20, v));
+          photos[+this.dataset.idx].duration = v;
+          renderPhotoList();
         });
       }
       row.querySelector('.photo-del').addEventListener('click', function(e) {
@@ -882,7 +936,7 @@ function renderPhotoList() {
   // 提示
   const hint = document.getElementById('photo-count-hint');
   if (photos.length > 0) {
-    const totalDur = photos.reduce((s, p) => s + (p.type === 'video' ? Math.round(p.duration) : 4), 0);
+    const totalDur = photos.reduce((s, p) => s + (Math.round(getClipDuration(p))), 0);
     const vidCount = photos.filter(p => p.type === 'video').length;
     const withText = photos.filter(p => p.text.trim()).length;
     hint.style.display = 'block';
@@ -904,6 +958,11 @@ function renderPhotoList() {
 
 function escapeAttr(s) {
   return s.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 素材在影片中的播放秒數：影片用剪輯長度，照片/拼貼用可調整的停留秒數（預設 4 秒）
+function getClipDuration(p) {
+  return p.type === 'video' ? p.duration : (p.duration || 4);
 }
 
 function toggleCollageMode() {
@@ -934,7 +993,7 @@ function createCollage() {
   });
   const firstIdx = indices[0];
   [...indices].reverse().forEach(i => photos.splice(i, 1));
-  photos.splice(firstIdx, 0, { type: 'collage', items, text: '', name: `拼貼（${items.length}張）` });
+  photos.splice(firstIdx, 0, { type: 'collage', items, text: '', name: `拼貼（${items.length}張）`, duration: 4 });
   collageSelected.clear();
   collageMode = false;
   document.getElementById('collage-mode-btn').textContent = '🖼️ 建立照片拼貼';
@@ -1196,7 +1255,7 @@ function updateSummary() {
   const photoCount = photos.filter(p => p.type !== 'video').length;
   const vidCount   = photos.filter(p => p.type === 'video').length;
   const withText   = photos.filter(p => p.text.trim()).length;
-  const totalDur   = photos.reduce((a, p) => a + (p.type === 'video' ? Math.round(p.duration) : 4), 0);
+  const totalDur   = photos.reduce((a, p) => a + (Math.round(getClipDuration(p))), 0);
   let lines = [];
   if (photos.length > 0) {
     const parts = [];
@@ -1495,7 +1554,7 @@ function getCollageLayout(n, W, H, splitRatio = 0.5) {
 }
 
 async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
-  const KB_FPS = 8, totalFrames = Math.round(4 * KB_FPS);
+  const KB_FPS = 8, totalFrames = Math.round((p.duration || 4) * KB_FPS);
   const frameDurUs = Math.round(1_000_000 / KB_FPS);
   const ZOOM = 0.05;
 
@@ -1554,11 +1613,11 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
   return ts;
 }
 
-// Ken Burns 緩慢縮放效果（照片用，8fps × 4秒 = 32 frames）
+// Ken Burns 緩慢縮放效果（照片用，8fps × 可調秒數，預設 4 秒 = 32 frames）
 // 採用「模糊背景 + contain 主圖」：直式照片完整顯示，不裁切，黑邊用模糊版填滿
 async function encodeKenBurns(p, bmp, ctx, canvas, encoder, W, H, startTs, idx) {
   const KB_FPS      = 8;
-  const totalFrames = Math.round(4 * KB_FPS);
+  const totalFrames = Math.round((p.duration || 4) * KB_FPS);
   const frameDurUs  = Math.round(1_000_000 / KB_FPS);
   const containScale = Math.min(W / bmp.width, H / bmp.height); // 完整顯示，不裁切
   const coverScale   = Math.max(W / bmp.width, H / bmp.height); // 填滿畫面用（背景）
@@ -1925,10 +1984,10 @@ async function makeVideoRemote() {
     setProgress(20);
     setStatus('info', '📤 正在送出製作請求⋯⋯');
 
-    const totalDur    = photos.reduce((a, p) => a + (p.type === 'video' ? Math.round(p.duration) : 4), 0);
+    const totalDur    = photos.reduce((a, p) => a + (Math.round(getClipDuration(p))), 0);
     const photoPayload = photos.map((p, i) => ({
       type: p.type || 'photo', data: mediaData[i],
-      text: p.text.trim(), duration: p.type === 'video' ? p.duration : 4,
+      text: p.text.trim(), duration: getClipDuration(p),
       mimeType: p.mimeType || 'image/jpeg',
       trimStart: p.trimStart || 0
     }));
