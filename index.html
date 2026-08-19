@@ -2232,7 +2232,6 @@ showPWABanner();
 let _trimFile=null, _trimUrl=null, _trimCb=null;
 let _trimStart=0, _trimEnd=0, _trimTotal=0;
 let _trimEventsReady=false;
-const TRIM_MAX=15; // 選取片段最長秒數
 const TRIM_MIN=1;  // 選取片段最短秒數
 
 function fmtT(s){
@@ -2273,7 +2272,7 @@ function openTrimmer(file, objectUrl, onDone) {
     clearTimeout(failTimer);
     _trimTotal=vid.duration;
     _trimStart=0;
-    _trimEnd=Math.min(_trimTotal, TRIM_MAX);
+    _trimEnd=_trimTotal;
     updateTrimUI();
     vid.currentTime=0;
   };
@@ -2326,12 +2325,12 @@ function setupTrimmerEvents(){
       _trimStart=Math.max(0, Math.min(maxStart, dragStartTrimStart+dSec));
       _trimEnd=Math.min(_trimTotal, _trimStart+winLen);
     } else if(mode==='left'){
-      const lower=Math.max(0, dragStartTrimEnd-TRIM_MAX);
+      const lower=0;
       const upper=dragStartTrimEnd-TRIM_MIN;
       _trimStart=Math.max(lower, Math.min(upper, dragStartTrimStart+dSec));
     } else if(mode==='right'){
       const lower=dragStartTrimStart+TRIM_MIN;
-      const upper=Math.min(_trimTotal, dragStartTrimStart+TRIM_MAX);
+      const upper=_trimTotal;
       _trimEnd=Math.max(lower, Math.min(upper, dragStartTrimEnd+dSec));
     }
     updateTrimUI();
