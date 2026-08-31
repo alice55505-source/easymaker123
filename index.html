@@ -552,12 +552,12 @@
       <p style="font-size:1.1rem;margin-top:6px">（可以一次選很多張）</p>
       <input type="file" id="photo-input" accept="image/*,video/*,.mp4,.mov,.m4v,.3gp,.avi,.webm,.mkv,.ts,.m2ts,.wmv,.flv" multiple>
     </div>
-    <div id="photo-list"></div>
     <button class="collage-mode-btn" id="collage-mode-btn" onclick="toggleCollageMode()">🖼️ 建立照片拼貼</button>
     <div class="collage-action-bar" id="collage-action-bar">
       <button class="collage-merge-btn" id="collage-merge-btn" disabled onclick="createCollage()">請選 2 張以上</button>
       <button onclick="toggleCollageMode()" style="padding:12px 16px;border:2px solid var(--border);border-radius:12px;background:#fff;color:var(--muted);font-size:1rem;cursor:pointer;">取消</button>
     </div>
+    <div id="photo-list"></div>
     <p class="hint" id="photo-count-hint" style="display:none"></p>
   </div>
 
