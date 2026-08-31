@@ -232,6 +232,21 @@
   .photo-crop:hover { color: #27ae60; background: #e8f8f0; }
   .photo-crop.cropped { color: #27ae60; }
 
+  .photo-audio {
+    background: none;
+    border: none;
+    font-size: 1.15rem;
+    cursor: pointer;
+    color: #c5a898;
+    flex-shrink: 0;
+    padding: 5px 7px;
+    border-radius: 8px;
+    transition: color .15s, background .15s;
+    line-height: 1;
+  }
+  .photo-audio:hover { color: var(--accent); background: #fdecea; }
+  .photo-audio.has-audio { color: var(--accent); }
+
   .photo-dur-wrap {
     display: flex;
     align-items: center;
@@ -461,32 +476,24 @@
   /* 拼貼素材列 */
   .collage-row { background: #fffaf5; }
   .collage-mini-thumbs { display: flex; gap: 6px; flex-shrink: 0; }
-  .collage-mini-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .collage-mini-thumb {
     width: 44px; height: 33px; object-fit: cover;
     border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.15);
   }
-  .collage-item-crop {
-    background: none; border: none; font-size: .85rem; cursor: pointer;
-    color: #c5a898; padding: 1px 4px; border-radius: 5px;
-    transition: color .15s, background .15s; line-height: 1;
+  .collage-edit-btn {
+    flex-shrink: 0;
+    border: 2px solid var(--accent2);
+    background: #fff5ec;
+    color: var(--accent2);
+    font-family: 'Iansui', 'Noto Serif TC', serif;
+    font-size: .95rem;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background .15s;
   }
-  .collage-item-crop:hover { color: #27ae60; background: #e8f8f0; }
-  .collage-item-crop.has-crop { color: #27ae60; }
-  .collage-item-fit {
-    background: none; border: none; font-size: .85rem; cursor: pointer;
-    color: #c5a898; padding: 1px 4px; border-radius: 5px;
-    transition: color .15s, background .15s; line-height: 1;
-  }
-  .collage-item-fit:hover { color: #2980b9; background: #e8f4fc; }
-  .collage-item-fit.is-fit { color: #2980b9; }
-  .collage-split-ctrl { display:flex; align-items:center; gap:4px; flex-shrink:0; }
-  .collage-split-btn {
-    background: none; border: 1px solid var(--border); font-size: .8rem;
-    cursor: pointer; color: var(--muted); padding: 2px 7px; border-radius: 5px;
-    transition: background .15s; line-height: 1;
-  }
-  .collage-split-btn:hover { background: #f0e8e4; color: var(--accent); }
+  .collage-edit-btn:hover { background: #ffe8d5; }
   .collage-badge {
     font-size: .78rem; background: var(--accent2); color: #fff;
     border-radius: 4px; padding: 1px 6px; margin-left: 4px;
@@ -760,29 +767,15 @@ function renderPhotoList() {
       // ── 拼貼素材列 ──
       row.className = 'photo-row collage-row';
       row.draggable = true;
-      const isTwo = p.items.length === 2;
-      const splitRatio = p.splitRatio ?? 0.5;
-      const miniThumbs = p.items.map((it, ii) =>
-        `<div class="collage-mini-item">
-          <img class="collage-mini-thumb" src="${it.dataUrl}" alt="">
-          <div style="display:flex;gap:2px;justify-content:center;">
-            ${!it.fitMode ? `<button class="collage-item-crop${it.focusX !== undefined ? ' has-crop' : ''}" data-col="${i}" data-item="${ii}" title="調整裁切">✂</button>` : ''}
-            <button class="collage-item-fit${it.fitMode ? ' is-fit' : ''}" data-col="${i}" data-item="${ii}" title="${it.fitMode ? '切回裁切模式' : '全部顯示（不裁切）'}">⊞</button>
-          </div>
-        </div>`
-      ).join('');
+      const miniThumbs = p.items.map(it => `<img class="collage-mini-thumb" src="${it.dataUrl}" alt="">`).join('');
       row.innerHTML = `
         <span class="drag-handle" title="拖曳排序">⠿</span>
         <span class="photo-num">${i + 1}</span>
         <div class="collage-mini-thumbs">${miniThumbs}</div>
-        ${isTwo ? `<div class="collage-split-ctrl">
-          <button class="collage-split-btn" data-col="${i}" data-dir="-1" title="右邊放大">◀</button>
-          <span style="font-size:.7rem;color:var(--muted);min-width:36px;text-align:center;">${Math.round(splitRatio*100)}:${Math.round((1-splitRatio)*100)}</span>
-          <button class="collage-split-btn" data-col="${i}" data-dir="1" title="左邊放大">▶</button>
-        </div>` : ''}
+        <button class="collage-edit-btn" data-idx="${i}" title="拖曳調整拼貼版面">🖼️ 調整拼貼</button>
         <span class="photo-fname">拼貼<span class="collage-badge">${p.items.length}張</span></span>
         <div class="photo-dur-wrap" title="停留秒數">
-          <input type="number" class="photo-dur-input" min="1" max="20" step="0.5" value="${p.duration || 4}" data-idx="${i}">
+          <input type="number" class="photo-dur-input" min="1" max="120" step="0.5" value="${p.duration || 4}" data-idx="${i}">
           <span class="photo-dur-unit">秒</span>
         </div>
         <div class="photo-text-wrap">
@@ -792,6 +785,7 @@ function renderPhotoList() {
             value="${escapeAttr(p.text)}"
             data-idx="${i}">
         </div>
+        <button class="photo-audio${p.audioUrl ? ' has-audio' : ''}" title="${p.audioUrl ? '已錄音 ' + fmtT(p.audioDuration || 0) + '（點擊修改／播放）' : '錄音或上傳語音'}" data-idx="${i}">${p.audioUrl ? '🔊' : '🎤'}</button>
         <button class="photo-del" title="拆開拼貼" data-idx="${i}">⊞</button>
       `;
       row.querySelector('.photo-text-input').addEventListener('input', function() {
@@ -803,36 +797,23 @@ function renderPhotoList() {
       row.querySelector('.photo-dur-input').addEventListener('change', function() {
         let v = parseFloat(this.value);
         if (!isFinite(v) || v <= 0) v = 4;
-        v = Math.max(1, Math.min(20, v));
+        v = Math.max(1, Math.min(120, v));
         photos[+this.dataset.idx].duration = v;
         renderPhotoList();
       });
-      row.querySelectorAll('.collage-item-crop').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          openCropModal(+this.dataset.col, +this.dataset.item);
-        });
+      row.querySelector('.photo-audio').addEventListener('click', function(e) {
+        e.stopPropagation();
+        openAudioModal(+this.dataset.idx);
       });
-      row.querySelectorAll('.collage-item-fit').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          const item = photos[+this.dataset.col].items[+this.dataset.item];
-          item.fitMode = !item.fitMode;
-          renderPhotoList();
-        });
-      });
-      row.querySelectorAll('.collage-split-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          const cp = photos[+this.dataset.col];
-          cp.splitRatio = Math.max(0.3, Math.min(0.7, (cp.splitRatio ?? 0.5) + +this.dataset.dir * 0.1));
-          renderPhotoList();
-        });
+      row.querySelector('.collage-edit-btn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        openCollageEditModal(+this.dataset.idx);
       });
       // 拆開拼貼
       row.querySelector('.photo-del').addEventListener('click', function(e) {
         e.stopPropagation();
         const ci = +this.dataset.idx;
+        if (photos[ci].audioUrl) URL.revokeObjectURL(photos[ci].audioUrl); // 拆開後語音無法對應到單張照片，直接釋放
         const items = photos[ci].items.map(it => ({ type: 'photo', file: it.file, dataUrl: it.dataUrl, name: it.name, text: '', duration: photos[ci].duration || 4 }));
         photos.splice(ci, 1, ...items);
         renderPhotoList(); updateSummary(); checkReady();
@@ -848,7 +829,7 @@ function renderPhotoList() {
       const badge = isVid ? `<span style="font-size:.75rem;background:#333;color:#fff;border-radius:4px;padding:1px 5px;margin-left:4px;">🎬 ${dur}s</span>` : '';
       const durCtrl = !isVid ? `
         <div class="photo-dur-wrap" title="停留秒數">
-          <input type="number" class="photo-dur-input" min="1" max="20" step="0.5" value="${p.duration || 4}" data-idx="${i}">
+          <input type="number" class="photo-dur-input" min="1" max="120" step="0.5" value="${p.duration || 4}" data-idx="${i}">
           <span class="photo-dur-unit">秒</span>
         </div>` : '';
       const isSelected = collageMode && collageSelected.has(i);
@@ -869,6 +850,7 @@ function renderPhotoList() {
             data-idx="${i}">
         </div>
         ${!isVid ? `<button class="photo-crop${p.cropY !== undefined ? ' cropped' : ''}" title="裁剪16:9" data-idx="${i}">✂</button>` : ''}
+        ${!isVid ? `<button class="photo-audio${p.audioUrl ? ' has-audio' : ''}" title="${p.audioUrl ? '已錄音 ' + fmtT(p.audioDuration || 0) + '（點擊修改／播放）' : '錄音或上傳語音'}" data-idx="${i}">${p.audioUrl ? '🔊' : '🎤'}</button>` : ''}
         <button class="photo-del" title="刪除" data-idx="${i}">✕</button>
       `;
 
@@ -884,20 +866,28 @@ function renderPhotoList() {
           openCropModal(+this.dataset.idx);
         });
       }
+      const audioBtn = row.querySelector('.photo-audio');
+      if (audioBtn) {
+        audioBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          openAudioModal(+this.dataset.idx);
+        });
+      }
       const durInput = row.querySelector('.photo-dur-input');
       if (durInput) {
         durInput.addEventListener('click', e => e.stopPropagation());
         durInput.addEventListener('change', function() {
           let v = parseFloat(this.value);
           if (!isFinite(v) || v <= 0) v = 4;
-          v = Math.max(1, Math.min(20, v));
+          v = Math.max(1, Math.min(120, v));
           photos[+this.dataset.idx].duration = v;
           renderPhotoList();
         });
       }
       row.querySelector('.photo-del').addEventListener('click', function(e) {
         e.stopPropagation();
-        photos.splice(+this.dataset.idx, 1);
+        const removed = photos.splice(+this.dataset.idx, 1)[0];
+        if (removed.audioUrl) URL.revokeObjectURL(removed.audioUrl);
         renderPhotoList(); updateSummary(); checkReady();
       });
 
@@ -939,10 +929,12 @@ function renderPhotoList() {
     const totalDur = photos.reduce((s, p) => s + (Math.round(getClipDuration(p))), 0);
     const vidCount = photos.filter(p => p.type === 'video').length;
     const withText = photos.filter(p => p.text.trim()).length;
+    const withAudio = photos.filter(p => p.audioUrl).length;
     hint.style.display = 'block';
     hint.innerHTML =
       `共 <strong>${photos.length}</strong> 個素材（${vidCount > 0 ? `含 ${vidCount} 段影片，` : ''}影片長度約 <strong>${totalDur}</strong> 秒）` +
       (withText > 0 ? `，其中 <strong>${withText}</strong> 個有文字` : '') +
+      (withAudio > 0 ? `，<strong>${withAudio}</strong> 個有語音` : '') +
       `。<br>可拖曳 ⠿ 調整順序。`;
   } else {
     hint.style.display = 'none';
@@ -992,7 +984,10 @@ function createCollage() {
     return item;
   });
   const firstIdx = indices[0];
-  [...indices].reverse().forEach(i => photos.splice(i, 1));
+  [...indices].reverse().forEach(i => {
+    if (photos[i].audioUrl) URL.revokeObjectURL(photos[i].audioUrl); // 合併成拼貼後語音無法對應到單張照片，直接釋放
+    photos.splice(i, 1);
+  });
   photos.splice(firstIdx, 0, { type: 'collage', items, text: '', name: `拼貼（${items.length}張）`, duration: 4 });
   collageSelected.clear();
   collageMode = false;
@@ -1263,6 +1258,8 @@ function updateSummary() {
     if (vidCount   > 0) parts.push(`${vidCount} 段影片`);
     lines.push(`📷 素材：${parts.join(' + ')}（約 ${totalDur} 秒）`);
     if (withText > 0) lines.push(`✍️ 有文字：${withText} 個`);
+    const withAudio = photos.filter(p => p.audioUrl).length;
+    if (withAudio > 0) lines.push(`🎤 有語音：${withAudio} 個（播放時背景音樂會自動降低音量）`);
     if (vidCount > 0)  lines.push(`🔇 影片段落音樂會自動降低音量`);
   }
   if (selectedMusic) lines.push(`🎵 音樂：${selectedMusic.name.replace(/\.[a-z0-9]+$/i,'')}`);
@@ -1363,7 +1360,7 @@ async function makeVideoLocally() {
     }
 
     let tsUs = 0;
-    const videoRanges = []; // {startSec, endSec, dataUrl} 記錄影片段落位置
+    const clipAudioRanges = []; // {startSec, endSec, dataUrl} 記錄影片原聲／照片語音的段落位置
 
     // 片頭
     const introTitle = (document.getElementById('intro-title')?.value || '').trim();
@@ -1380,18 +1377,20 @@ async function makeVideoLocally() {
       setProgress(8 + Math.round((i / photos.length) * 74));
       setStatus('info', `🎬 合成中：第 ${i + 1} / ${photos.length} 個素材⋯⋯`);
 
+      const clipStartSec = tsUs / 1_000_000;
       if (p.type === 'video') {
-        const clipStartSec = tsUs / 1_000_000;
         tsUs = await encodeVideoClipFrames(p, ctx, canvas, videoEncoder, W, H, tsUs);
-        videoRanges.push({ startSec: clipStartSec, endSec: tsUs / 1_000_000, dataUrl: p.dataUrl, includeAudio: p.includeAudio !== false, trimStart: p.trimStart || 0 });
+        clipAudioRanges.push({ startSec: clipStartSec, endSec: tsUs / 1_000_000, dataUrl: p.dataUrl, includeAudio: p.includeAudio !== false, trimStart: p.trimStart || 0 });
       } else if (p.type === 'collage') {
         tsUs = await encodeCollage(p, ctx, canvas, videoEncoder, W, H, tsUs);
+        if (p.audioUrl) clipAudioRanges.push({ startSec: clipStartSec, endSec: tsUs / 1_000_000, dataUrl: p.audioUrl, includeAudio: true, trimStart: 0 });
       } else {
         const bmp = await loadBitmap(p.dataUrl);
         const sharpBmp = await sharpenBitmap(bmp);
         bmp.close();
         tsUs = await encodeKenBurns(p, sharpBmp, ctx, canvas, videoEncoder, W, H, tsUs, i);
         sharpBmp.close();
+        if (p.audioUrl) clipAudioRanges.push({ startSec: clipStartSec, endSec: tsUs / 1_000_000, dataUrl: p.audioUrl, includeAudio: true, trimStart: 0 });
       }
     }
 
@@ -1407,19 +1406,19 @@ async function makeVideoLocally() {
     if (encoderError) throw encoderError;
     const totalSec = tsUs / 1_000_000;
 
-    // 解碼影片素材的音訊
-    const videoAudioBuffers = [];
-    if (videoRanges.length > 0) {
-      setStatus('info', '🔊 解碼影片音訊⋯⋯');
+    // 解碼影片原聲／照片語音
+    const clipAudioBuffers = [];
+    if (clipAudioRanges.length > 0) {
+      setStatus('info', '🔊 解碼語音與影片音訊⋯⋯');
       const actx = new AudioContext({ sampleRate: 44100 });
-      for (const vr of videoRanges) {
+      for (const vr of clipAudioRanges) {
         try {
           const res  = await fetch(vr.dataUrl);
           const buf  = await res.arrayBuffer();
           const dec  = await actx.decodeAudioData(buf);
-          videoAudioBuffers.push({ ...vr, decoded: dec });
+          clipAudioBuffers.push({ ...vr, decoded: dec });
         } catch {
-          videoAudioBuffers.push({ ...vr, decoded: null });
+          clipAudioBuffers.push({ ...vr, decoded: null });
         }
       }
       await actx.close();
@@ -1469,7 +1468,7 @@ async function makeVideoLocally() {
       const ad = new AudioData({
         format: 'f32-planar', sampleRate: 44100,
         numberOfFrames: n, numberOfChannels: 2,
-        timestamp: aTs, data: buildAudioData(decoded, off, n, totalFrames, fadeOutFrames, videoAudioBuffers)
+        timestamp: aTs, data: buildAudioData(decoded, off, n, totalFrames, fadeOutFrames, clipAudioBuffers)
       });
       audioEncoder.encode(ad);
       ad.close();
@@ -1892,8 +1891,8 @@ function trimLeadingSilence(buffer, maxLeadSec = 1.0) {
 }
 
 // 從 AudioBuffer 裁切並循環填充，末尾套漸出（fade out）
-function buildAudioData(decoded, offsetFrames, numFrames, totalFrames = 0, fadeOutFrames = 0, videoAudioBuffers = []) {
-  const DUCK       = 0.15;  // 影片段落背景音樂降至 15%
+function buildAudioData(decoded, offsetFrames, numFrames, totalFrames = 0, fadeOutFrames = 0, clipAudioBuffers = []) {
+  const DUCK       = 0.15;  // 影片段落／照片語音時背景音樂降至 15%
   const RAMP       = 0.3;   // 漸變時間（秒）
   const RAMP_F     = Math.round(RAMP * 44100);
   const numCh  = decoded.numberOfChannels;
@@ -1906,9 +1905,9 @@ function buildAudioData(decoded, offsetFrames, numFrames, totalFrames = 0, fadeO
       const globalFrame = offsetFrames + i;
       const globalSec   = globalFrame / 44100;
 
-      // 計算背景音樂 gain（影片段落降低，附漸變）
+      // 計算背景音樂 gain（影片段落／照片語音時降低，附漸變）
       let musicGain = 1.0;
-      for (const vr of videoAudioBuffers) {
+      for (const vr of clipAudioBuffers) {
         if (!vr.includeAudio) continue; // 不保留聲音時背景音樂不降低
         const rampInStart  = vr.startSec - RAMP;
         const rampOutEnd   = vr.endSec   + RAMP;
@@ -1932,8 +1931,8 @@ function buildAudioData(decoded, offsetFrames, numFrames, totalFrames = 0, fadeO
 
       let sample = src[globalFrame % srcLen] * musicGain;
 
-      // 混入影片原聲
-      for (const vr of videoAudioBuffers) {
+      // 混入影片原聲／照片語音
+      for (const vr of clipAudioBuffers) {
         if (!vr.decoded || !vr.includeAudio || globalSec < vr.startSec || globalSec >= vr.endSec) continue;
         const clipFrame = Math.floor((globalSec - vr.startSec + (vr.trimStart || 0)) * 44100);
         const ch = Math.min(c, vr.decoded.numberOfChannels - 1);
@@ -1966,6 +1965,9 @@ async function makeVideoRemote() {
   try {
     if (selectedMusic.isUpload) {
       throw new Error('您上傳的音樂目前僅支援本機合成，此裝置的瀏覽器不支援本機合成，請改用音樂庫中的詩歌，或換一台較新的手機/瀏覽器再試');
+    }
+    if (photos.some(p => p.audioUrl)) {
+      throw new Error('照片語音功能目前僅支援本機合成，此裝置的瀏覽器不支援本機合成，請換一台較新的手機/瀏覽器再試');
     }
     const mediaData = await Promise.all(photos.map(p => {
       if (p.type === 'video') {
@@ -2465,49 +2467,21 @@ function captureSegment(video, startTime, endTime){
   });
 }
 
-// ── 照片裁剪 Modal（支援任意格子比例）───────────────────────────────────
+// ── 照片裁剪 Modal（獨立照片用，固定 16:9）───────────────────────────────
 let cropModalIdx = -1;
-let cropModalItemIdx = -1; // -1 = 獨立照片, >=0 = 拼貼格子
 let cropModalAR = 16 / 9;  // 裁切框長寬比 (width/height)
 let cropFrac = 0.5;        // 框位置 (0=頂/左, 1=底/右)
 let _cropMoveDir = 'v';    // 'v'=上下, 'h'=左右, 'none'=不需移動
 let _cropDragSX = null, _cropDragSY = null, _cropDragSFrac = 0;
 
-function openCropModal(idx, itemIdx = -1) {
+function openCropModal(idx) {
   cropModalIdx = idx;
-  cropModalItemIdx = itemIdx;
   const img = document.getElementById('crop-img');
   document.getElementById('crop-modal').style.display = 'flex';
-
-  if (itemIdx >= 0) {
-    const p = photos[idx];
-    const layout = getCollageLayout(p.items.length, 1920, 1080, p.splitRatio);
-    const cell = layout[itemIdx];
-    cropModalAR = cell.w / cell.h;
-    const item = p.items[itemIdx];
-    img.onload = () => _initCropFracFromFocus(item.focusX ?? 0.5, item.focusY ?? 0.5);
-    img.src = item.dataUrl;
-  } else {
-    cropModalAR = 16 / 9;
-    const p = photos[idx];
-    img.onload = () => { cropFrac = p.cropY ?? 0.5; updateCropOverlay(); };
-    img.src = p.dataUrl;
-  }
+  const p = photos[idx];
+  img.onload = () => { cropFrac = p.cropY ?? 0.5; updateCropOverlay(); };
+  img.src = p.dataUrl;
   setTimeout(() => { if (img.complete) img.onload(); }, 80);
-}
-
-function _initCropFracFromFocus(fx, fy) {
-  const img = document.getElementById('crop-img');
-  const dW = img.offsetWidth, dH = img.offsetHeight;
-  if (!dW) return;
-  if (cropModalAR >= dW / dH) {
-    const bH = dW / cropModalAR, maxT = dH - bH;
-    cropFrac = maxT > 0 ? Math.max(0, Math.min(1, (fy * dH - bH / 2) / maxT)) : 0.5;
-  } else {
-    const bW = dH * cropModalAR, maxL = dW - bW;
-    cropFrac = maxL > 0 ? Math.max(0, Math.min(1, (fx * dW - bW / 2) / maxL)) : 0.5;
-  }
-  updateCropOverlay();
 }
 
 function closeCropModal() {
@@ -2545,22 +2519,9 @@ function confirmCrop() {
   if (cropModalIdx < 0) { closeCropModal(); return; }
   const img = document.getElementById('crop-img');
   const dW = img.offsetWidth, dH = img.offsetHeight;
-  if (cropModalItemIdx >= 0) {
-    const item = photos[cropModalIdx].items[cropModalItemIdx];
-    if (cropModalAR >= dW / dH) {
-      const bH = dW / cropModalAR, maxT = dH - bH;
-      const cy = maxT > 0 ? cropFrac * maxT + bH / 2 : dH / 2;
-      item.focusX = 0.5; item.focusY = cy / dH;
-    } else {
-      const bW = dH * cropModalAR, maxL = dW - bW;
-      const cx = maxL > 0 ? cropFrac * maxL + bW / 2 : dW / 2;
-      item.focusX = cx / dW; item.focusY = 0.5;
-    }
-  } else {
-    const bH = Math.round(dW / cropModalAR);
-    if (bH < dH) photos[cropModalIdx].cropY = cropFrac;
-    else delete photos[cropModalIdx].cropY;
-  }
+  const bH = Math.round(dW / cropModalAR);
+  if (bH < dH) photos[cropModalIdx].cropY = cropFrac;
+  else delete photos[cropModalIdx].cropY;
   renderPhotoList();
   closeCropModal();
 }
@@ -2596,6 +2557,349 @@ function confirmCrop() {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setup);
   else setup();
 })();
+
+// ── 拼貼即時預覽編輯：直接在成品版面上拖曳調整照片位置與比例 ──
+let ceIdx = -1;
+let ceCells = []; // [{cellDiv, img, item}]
+let ceResizeHandler = null;
+
+function openCollageEditModal(idx) {
+  ceIdx = idx;
+  document.getElementById('collage-edit-modal').style.display = 'flex';
+  renderCollageEditor();
+  ceResizeHandler = () => renderCollageEditor();
+  window.addEventListener('resize', ceResizeHandler);
+}
+
+function closeCollageEditModal() {
+  if (ceResizeHandler) window.removeEventListener('resize', ceResizeHandler);
+  ceResizeHandler = null;
+  document.getElementById('collage-edit-modal').style.display = 'none';
+  ceIdx = -1;
+  ceCells = [];
+  renderPhotoList();
+}
+
+function renderCollageEditor() {
+  if (ceIdx < 0) return;
+  const p = photos[ceIdx];
+  const viewport = document.getElementById('ce-viewport');
+  const vw = viewport.clientWidth, vh = viewport.clientHeight;
+  const stage = document.getElementById('ce-stage');
+  stage.innerHTML = '';
+  ceCells = [];
+
+  const layout = getCollageLayout(p.items.length, vw, vh, p.splitRatio);
+
+  layout.forEach((cell, ci) => {
+    const item = p.items[ci];
+    const cellDiv = document.createElement('div');
+    cellDiv.style.cssText = `position:absolute;left:${cell.x}px;top:${cell.y}px;width:${cell.w}px;height:${cell.h}px;overflow:hidden;background:#222;touch-action:none;`;
+
+    const img = document.createElement('img');
+    img.src = item.dataUrl;
+    img.draggable = false;
+    img.style.cssText = 'position:absolute;user-select:none;';
+    cellDiv.appendChild(img);
+
+    const fitBtn = document.createElement('button');
+    fitBtn.textContent = item.fitMode ? '⛶' : '⊡';
+    fitBtn.title = item.fitMode ? '切回裁切模式' : '完整顯示（不裁切）';
+    fitBtn.style.cssText = 'position:absolute;top:4px;right:4px;z-index:2;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:6px;font-size:.9rem;padding:4px 7px;cursor:pointer;';
+    fitBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      item.fitMode = !item.fitMode;
+      renderCollageEditor();
+    });
+    cellDiv.appendChild(fitBtn);
+
+    if (item.fitMode) {
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.left = '0'; img.style.top = '0';
+      img.style.objectFit = 'contain';
+      img.style.background = '#fff';
+    } else {
+      const doPosition = () => positionCoverImage(img, cell, item);
+      img.onload = doPosition;
+      if (img.complete && img.naturalWidth) doPosition();
+      cellDiv.addEventListener('pointerdown', e => beginCellDrag(e, cellDiv, img, cell, item));
+    }
+
+    stage.appendChild(cellDiv);
+    ceCells.push({ cellDiv, img, item });
+  });
+
+  // 兩張合併時，中間加一條可拖曳的格線，用來調整左右比例
+  if (p.items.length === 2) {
+    const G = 8;
+    const dividerX = layout[0].x + layout[0].w + G / 2;
+    const divider = document.createElement('div');
+    divider.style.cssText = `position:absolute;top:0;left:${dividerX - 10}px;width:20px;height:${vh}px;cursor:ew-resize;z-index:3;touch-action:none;display:flex;align-items:center;justify-content:center;`;
+    divider.innerHTML = '<div style="width:4px;height:36px;border-radius:3px;background:rgba(255,255,255,.75);box-shadow:0 0 0 2px rgba(0,0,0,.3);"></div>';
+    divider.addEventListener('pointerdown', e => beginDividerDrag(e, p, vw));
+    stage.appendChild(divider);
+  }
+}
+
+// 裁切模式：以 focusX/focusY 為中心，用 cover 方式填滿格子
+function positionCoverImage(img, cell, item) {
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  if (!iw || !ih) return;
+  const scale = Math.max(cell.w / iw, cell.h / ih);
+  const dispW = iw * scale, dispH = ih * scale;
+  img.style.width = dispW + 'px';
+  img.style.height = dispH + 'px';
+  img.style.objectFit = '';
+  img.style.background = '';
+  const fx = item.focusX ?? 0.5, fy = item.focusY ?? 0.5;
+  const left = Math.max(cell.w - dispW, Math.min(0, -(fx * dispW - cell.w / 2)));
+  const top  = Math.max(cell.h - dispH, Math.min(0, -(fy * dispH - cell.h / 2)));
+  img.style.left = left + 'px';
+  img.style.top  = top + 'px';
+}
+
+// 拖曳照片本身：直接平移，放開時換算回 focusX/focusY 儲存
+function beginCellDrag(e, cellDiv, img, cell, item) {
+  e.preventDefault();
+  const dispW = parseFloat(img.style.width);
+  const dispH = parseFloat(img.style.height);
+  if (!dispW || !dispH) return;
+  const startLeft = parseFloat(img.style.left) || 0;
+  const startTop  = parseFloat(img.style.top) || 0;
+  const startX = e.clientX, startY = e.clientY;
+  cellDiv.setPointerCapture(e.pointerId);
+
+  function onMove(ev) {
+    const nx = Math.max(cell.w - dispW, Math.min(0, startLeft + (ev.clientX - startX)));
+    const ny = Math.max(cell.h - dispH, Math.min(0, startTop + (ev.clientY - startY)));
+    img.style.left = nx + 'px';
+    img.style.top  = ny + 'px';
+    item.focusX = dispW > cell.w ? (-nx + cell.w / 2) / dispW : 0.5;
+    item.focusY = dispH > cell.h ? (-ny + cell.h / 2) / dispH : 0.5;
+  }
+  function onUp() {
+    cellDiv.removeEventListener('pointermove', onMove);
+    cellDiv.removeEventListener('pointerup', onUp);
+    cellDiv.removeEventListener('pointercancel', onUp);
+  }
+  cellDiv.addEventListener('pointermove', onMove);
+  cellDiv.addEventListener('pointerup', onUp);
+  cellDiv.addEventListener('pointercancel', onUp);
+}
+
+// 拖曳中間格線：即時調整左右比例，直接更新既有格子尺寸（不重建 DOM，才不會中斷拖曳事件）
+function beginDividerDrag(e, p, vw) {
+  e.preventDefault(); e.stopPropagation();
+  const G = 8;
+  const startX = e.clientX;
+  const startRatio = p.splitRatio ?? 0.5;
+  const target = e.currentTarget;
+  target.setPointerCapture(e.pointerId);
+
+  function onMove(ev) {
+    const dRatio = (ev.clientX - startX) / (vw - G);
+    p.splitRatio = Math.max(0.3, Math.min(0.7, startRatio + dRatio));
+    updateCollageLayoutOnly(p, vw, target, G);
+  }
+  function onUp() {
+    target.removeEventListener('pointermove', onMove);
+    target.removeEventListener('pointerup', onUp);
+    target.removeEventListener('pointercancel', onUp);
+  }
+  target.addEventListener('pointermove', onMove);
+  target.addEventListener('pointerup', onUp);
+  target.addEventListener('pointercancel', onUp);
+}
+
+// 格線拖曳中即時重新計算兩個格子與格線位置（保留 DOM 節點，避免中斷拖曳）
+function updateCollageLayoutOnly(p, vw, dividerEl, G) {
+  const viewport = document.getElementById('ce-viewport');
+  const vh = viewport.clientHeight;
+  const layout = getCollageLayout(2, vw, vh, p.splitRatio);
+  layout.forEach((cell, ci) => {
+    const { cellDiv, img, item } = ceCells[ci];
+    cellDiv.style.left = cell.x + 'px';
+    cellDiv.style.top = cell.y + 'px';
+    cellDiv.style.width = cell.w + 'px';
+    cellDiv.style.height = cell.h + 'px';
+    if (!item.fitMode && img.naturalWidth) positionCoverImage(img, cell, item);
+  });
+  dividerEl.style.left = (layout[0].x + layout[0].w + G / 2 - 10) + 'px';
+}
+
+// ── 照片語音：即時錄音／上傳音檔 ──────────────────────
+let audioModalIdx = -1;
+let _audioStream = null, _audioRecorder = null, _audioChunks = [];
+let _audioRecording = false;
+let _audioResultUrl = null, _audioResultDuration = 0, _audioResultName = '';
+let _audioTimerHandle = null, _audioStartTs = 0;
+let _audioEventsReady = false;
+
+function openAudioModal(idx) {
+  if (!_audioEventsReady) { setupAudioModalEvents(); _audioEventsReady = true; }
+  audioModalIdx = idx;
+  resetAudioModalUI();
+  const p = photos[idx];
+  document.getElementById('audio-remove-btn').style.display = p.audioUrl ? 'block' : 'none';
+  if (p.audioUrl) {
+    _audioResultUrl = p.audioUrl;
+    _audioResultDuration = p.audioDuration || 0;
+    _audioResultName = p.audioName || '錄音';
+    showAudioPreview(p.audioUrl);
+    document.getElementById('audio-confirm-btn').disabled = false;
+  }
+  document.getElementById('audio-modal').style.display = 'flex';
+}
+
+function closeAudioModal() {
+  if (_audioRecording) stopAudioRecording();
+  // 放棄還沒確認儲存的暫存錄音／上傳，釋放記憶體（已儲存在照片上的語音不受影響）
+  if (_audioResultUrl && audioModalIdx >= 0 && _audioResultUrl !== photos[audioModalIdx]?.audioUrl) {
+    URL.revokeObjectURL(_audioResultUrl);
+  }
+  document.getElementById('audio-modal').style.display = 'none';
+  audioModalIdx = -1;
+}
+
+function resetAudioModalUI() {
+  document.getElementById('audio-record-area').style.display = 'block';
+  document.getElementById('audio-preview-area').style.display = 'none';
+  document.getElementById('audio-timer').textContent = '0:00';
+  document.getElementById('audio-record-btn').textContent = '●';
+  document.getElementById('audio-record-btn').style.background = 'linear-gradient(135deg,#c0392b,#e67e22)';
+  document.getElementById('audio-confirm-btn').disabled = true;
+  _audioResultUrl = null; _audioResultDuration = 0; _audioResultName = '';
+}
+
+function setupAudioModalEvents() {
+  document.getElementById('audio-record-btn').addEventListener('click', () => {
+    _audioRecording ? stopAudioRecording() : startAudioRecording();
+  });
+  document.getElementById('audio-rerecord-btn').addEventListener('click', () => {
+    resetAudioModalUI();
+  });
+  document.getElementById('audio-upload-btn').addEventListener('click', () => {
+    document.getElementById('audio-upload-input').click();
+  });
+  document.getElementById('audio-upload-input').addEventListener('change', onAudioFileChosen);
+  document.getElementById('audio-cancel-btn').addEventListener('click', closeAudioModal);
+  document.getElementById('audio-remove-btn').addEventListener('click', () => {
+    if (audioModalIdx < 0) return;
+    const p = photos[audioModalIdx];
+    if (p.audioUrl) URL.revokeObjectURL(p.audioUrl);
+    delete p.audioUrl; delete p.audioDuration; delete p.audioName;
+    renderPhotoList();
+    closeAudioModal();
+  });
+  document.getElementById('audio-confirm-btn').addEventListener('click', confirmAudio);
+}
+
+async function startAudioRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    alert('此裝置或瀏覽器不支援錄音，請改用「上傳音檔」');
+    return;
+  }
+  try {
+    _audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    alert('無法使用麥克風：' + err.message);
+    return;
+  }
+  const mimes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+  const mime = mimes.find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+  _audioChunks = [];
+  try {
+    _audioRecorder = new MediaRecorder(_audioStream, mime ? { mimeType: mime } : {});
+  } catch (err) {
+    _audioStream.getTracks().forEach(t => t.stop());
+    alert('此裝置不支援錄音：' + err.message);
+    return;
+  }
+  _audioRecorder.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
+  _audioRecorder.onstop = () => {
+    _audioStream.getTracks().forEach(t => t.stop());
+    _audioStream = null;
+    const blob = new Blob(_audioChunks, { type: _audioRecorder.mimeType || 'audio/webm' });
+    handleNewAudio(blob, '錄音');
+  };
+  _audioRecorder.start();
+  _audioRecording = true;
+  _audioStartTs = Date.now();
+  document.getElementById('audio-record-btn').textContent = '■';
+  document.getElementById('audio-record-btn').style.background = '#555';
+  _audioTimerHandle = setInterval(() => {
+    document.getElementById('audio-timer').textContent = fmtT((Date.now() - _audioStartTs) / 1000);
+  }, 200);
+}
+
+function stopAudioRecording() {
+  if (_audioRecorder && _audioRecorder.state !== 'inactive') _audioRecorder.stop();
+  _audioRecording = false;
+  clearInterval(_audioTimerHandle);
+}
+
+function onAudioFileChosen(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const MAX_MB = 50;
+  if (file.size > MAX_MB * 1024 * 1024) {
+    alert(`音檔太大（超過 ${MAX_MB}MB），請選擇較小的檔案`);
+    return;
+  }
+  handleNewAudio(file, file.name);
+}
+
+function handleNewAudio(blobOrFile, name) {
+  const url = URL.createObjectURL(blobOrFile);
+  getMediaDuration(url).then(dur => {
+    _audioResultUrl = url;
+    _audioResultDuration = dur;
+    _audioResultName = name;
+    showAudioPreview(url);
+    document.getElementById('audio-confirm-btn').disabled = false;
+  });
+}
+
+function showAudioPreview(url) {
+  document.getElementById('audio-record-area').style.display = 'none';
+  document.getElementById('audio-preview-area').style.display = 'block';
+  document.getElementById('audio-preview-player').src = url;
+}
+
+// 部分瀏覽器（尤其錄音產生的 webm）metadata 裡的 duration 是 Infinity，
+// 需要先 seek 到極大時間點觸發 durationchange 才能拿到正確長度
+function getMediaDuration(url) {
+  return new Promise(resolve => {
+    const a = new Audio();
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => {
+      if (isFinite(a.duration) && a.duration > 0) { resolve(a.duration); return; }
+      a.currentTime = 1e9;
+      a.ontimeupdate = () => {
+        a.ontimeupdate = null;
+        resolve(isFinite(a.duration) ? a.duration : 0);
+      };
+    };
+    a.onerror = () => resolve(0);
+    a.src = url;
+  });
+}
+
+function confirmAudio() {
+  if (audioModalIdx < 0 || !_audioResultUrl) { closeAudioModal(); return; }
+  const p = photos[audioModalIdx];
+  if (p.audioUrl && p.audioUrl !== _audioResultUrl) URL.revokeObjectURL(p.audioUrl);
+  p.audioUrl = _audioResultUrl;
+  p.audioDuration = _audioResultDuration;
+  p.audioName = _audioResultName || '錄音';
+  if (_audioResultDuration > (p.duration || 4)) {
+    p.duration = Math.min(120, Math.ceil(_audioResultDuration));
+  }
+  renderPhotoList();
+  closeAudioModal();
+}
 
 </script>
 
@@ -2649,6 +2953,47 @@ function confirmCrop() {
   <div style="display:flex;gap:12px;width:100%;max-width:400px;">
     <button onclick="closeCropModal()" style="flex:1;padding:12px;border-radius:10px;border:none;background:#3a3a55;color:#ccc;cursor:pointer;font-size:.95rem;">取消</button>
     <button onclick="confirmCrop()" style="flex:2;padding:12px;border-radius:10px;border:none;background:#e74c3c;color:#fff;cursor:pointer;font-size:.95rem;font-weight:700;">✓ 確認裁剪</button>
+  </div>
+</div>
+
+<!-- 照片語音 Modal -->
+<div id="audio-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:2002;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#1c1c2e;border-radius:20px;padding:24px;width:100%;max-width:420px;box-shadow:0 8px 48px rgba(0,0,0,0.7);text-align:center;">
+    <h3 style="color:#fff;font-size:1.25rem;margin-bottom:16px;letter-spacing:1px;">🎤 照片語音</h3>
+
+    <div id="audio-record-area">
+      <div id="audio-timer" style="color:#e67e22;font-size:2rem;font-weight:700;font-family:monospace;margin-bottom:16px;">0:00</div>
+      <button id="audio-record-btn" style="width:88px;height:88px;border-radius:50%;border:none;background:linear-gradient(135deg,#c0392b,#e67e22);color:#fff;font-size:2rem;cursor:pointer;box-shadow:0 4px 18px rgba(192,57,43,.4);">●</button>
+      <p style="color:#aaa;font-size:.85rem;margin-top:10px;">點擊開始／停止錄音</p>
+    </div>
+
+    <div id="audio-preview-area" style="display:none;margin-bottom:8px;">
+      <audio id="audio-preview-player" controls style="width:100%;margin-bottom:10px;"></audio>
+      <button id="audio-rerecord-btn" style="background:none;border:1px solid #555;color:#ccc;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:.9rem;">🔄 重新錄音</button>
+    </div>
+
+    <div style="color:#777;font-size:.85rem;margin:16px 0;">── 或 ──</div>
+
+    <input type="file" id="audio-upload-input" accept="audio/*" style="display:none">
+    <button id="audio-upload-btn" style="width:100%;border:2px dashed #555;border-radius:12px;background:none;color:#ccc;padding:12px;font-size:.95rem;cursor:pointer;margin-bottom:16px;">📤 上傳音檔</button>
+
+    <div style="display:flex;gap:10px;">
+      <button id="audio-cancel-btn" style="flex:1;padding:13px;border-radius:10px;border:none;background:#3a3a55;color:#ccc;cursor:pointer;font-size:.95rem;">取消</button>
+      <button id="audio-remove-btn" style="flex:1;display:none;padding:13px;border-radius:10px;border:none;background:#5a2a2a;color:#ffb3b3;cursor:pointer;font-size:.95rem;">移除語音</button>
+      <button id="audio-confirm-btn" disabled style="flex:2;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#c0392b,#e67e22);color:#fff;cursor:pointer;font-size:1rem;font-weight:700;">✓ 確認加入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 拼貼即時預覽編輯 Modal -->
+<div id="collage-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:2003;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:14px;">
+  <div style="color:#fff;font-size:1rem;font-weight:700;letter-spacing:1px;">🖼️ 拖曳調整拼貼</div>
+  <div id="ce-viewport" style="position:relative;width:min(92vw,640px);aspect-ratio:16/9;background:#111;overflow:hidden;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);">
+    <div id="ce-stage" style="position:absolute;left:0;top:0;width:100%;height:100%;"></div>
+  </div>
+  <p style="color:#999;font-size:.85rem;text-align:center;max-width:420px;line-height:1.6;">拖曳照片可調整位置；兩張拼貼可拖曳中間格線調整比例；點右上角圖示切換「裁切／完整顯示」</p>
+  <div style="width:100%;max-width:420px;">
+    <button onclick="closeCollageEditModal()" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#c0392b,#e67e22);color:#fff;cursor:pointer;font-size:1rem;font-weight:700;">✓ 完成</button>
   </div>
 </div>
 </body>
