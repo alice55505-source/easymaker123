@@ -2574,6 +2574,7 @@ function openCollageEditModal(idx) {
 function closeCollageEditModal() {
   if (ceResizeHandler) window.removeEventListener('resize', ceResizeHandler);
   ceResizeHandler = null;
+  if (ceReorder) { ceReorder.ghostEl.remove(); ceReorder = null; } // 保險：避免中途關閉留下浮動縮圖
   document.getElementById('collage-edit-modal').style.display = 'none';
   ceIdx = -1;
   ceCells = [];
@@ -2623,8 +2624,8 @@ function renderCollageEditor() {
       const doPosition = () => positionCoverImage(img, cell, item);
       img.onload = doPosition;
       if (img.complete && img.naturalWidth) doPosition();
-      cellDiv.addEventListener('pointerdown', e => beginCellDrag(e, cellDiv, img, cell, item));
     }
+    cellDiv.addEventListener('pointerdown', e => beginCellDrag(e, cellDiv, img, cell, item, ci));
 
     stage.appendChild(cellDiv);
     ceCells.push({ cellDiv, img, item });
@@ -2659,33 +2660,107 @@ function positionCoverImage(img, cell, item) {
   img.style.top  = top + 'px';
 }
 
-// 拖曳照片本身：直接平移，放開時換算回 focusX/focusY 儲存
-function beginCellDrag(e, cellDiv, img, cell, item) {
+// 拖曳照片本身：短拖曳＝平移調整裁切位置；長按後再拖曳＝拿起整格和其他格交換位置
+const CE_LONG_PRESS_MS = 350;
+const CE_MOVE_THRESHOLD = 8;
+let ceReorder = null; // { fromCi, ghostEl, hoverCi, offsetX, offsetY }
+
+function beginCellDrag(e, cellDiv, img, cell, item, ci) {
   e.preventDefault();
-  const dispW = parseFloat(img.style.width);
-  const dispH = parseFloat(img.style.height);
-  if (!dispW || !dispH) return;
   const startLeft = parseFloat(img.style.left) || 0;
   const startTop  = parseFloat(img.style.top) || 0;
   const startX = e.clientX, startY = e.clientY;
   cellDiv.setPointerCapture(e.pointerId);
 
+  let mode = null; // null(尚未決定) | 'pan' | 'reorder'
+  const longPressTimer = setTimeout(() => {
+    if (mode) return;
+    mode = 'reorder';
+    startReorderDrag(ci, e.clientX, e.clientY);
+  }, CE_LONG_PRESS_MS);
+
   function onMove(ev) {
-    const nx = Math.max(cell.w - dispW, Math.min(0, startLeft + (ev.clientX - startX)));
-    const ny = Math.max(cell.h - dispH, Math.min(0, startTop + (ev.clientY - startY)));
-    img.style.left = nx + 'px';
-    img.style.top  = ny + 'px';
-    item.focusX = dispW > cell.w ? (-nx + cell.w / 2) / dispW : 0.5;
-    item.focusY = dispH > cell.h ? (-ny + cell.h / 2) / dispH : 0.5;
+    if (mode === null) {
+      const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY) > CE_MOVE_THRESHOLD;
+      // 完整顯示模式沒有裁切位置可調，短拖曳沒有作用，只能長按後交換位置
+      if (!item.fitMode && moved) {
+        mode = 'pan';
+        clearTimeout(longPressTimer);
+      }
+      return;
+    }
+    if (mode === 'pan') {
+      const dispW = parseFloat(img.style.width), dispH = parseFloat(img.style.height);
+      if (!dispW || !dispH) return;
+      const nx = Math.max(cell.w - dispW, Math.min(0, startLeft + (ev.clientX - startX)));
+      const ny = Math.max(cell.h - dispH, Math.min(0, startTop + (ev.clientY - startY)));
+      img.style.left = nx + 'px';
+      img.style.top  = ny + 'px';
+      item.focusX = dispW > cell.w ? (-nx + cell.w / 2) / dispW : 0.5;
+      item.focusY = dispH > cell.h ? (-ny + cell.h / 2) / dispH : 0.5;
+    } else if (mode === 'reorder') {
+      updateReorderDrag(ev.clientX, ev.clientY);
+    }
   }
   function onUp() {
+    clearTimeout(longPressTimer);
     cellDiv.removeEventListener('pointermove', onMove);
     cellDiv.removeEventListener('pointerup', onUp);
     cellDiv.removeEventListener('pointercancel', onUp);
+    if (mode === 'reorder') finishReorderDrag();
   }
   cellDiv.addEventListener('pointermove', onMove);
   cellDiv.addEventListener('pointerup', onUp);
   cellDiv.addEventListener('pointercancel', onUp);
+}
+
+// 長按觸發：把該格「拿起來」，用一個跟著手指走的浮動縮圖代替，其餘格子保持原位
+function startReorderDrag(fromCi, clientX, clientY) {
+  const { cellDiv, item } = ceCells[fromCi];
+  cellDiv.style.opacity = '0.3';
+  const rect = cellDiv.getBoundingClientRect();
+  const ghost = document.createElement('div');
+  ghost.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;
+    background-image:url('${item.dataUrl}');background-size:cover;
+    background-position:${(item.focusX ?? 0.5) * 100}% ${(item.focusY ?? 0.5) * 100}%;
+    border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.55);pointer-events:none;z-index:9999;
+    outline:3px solid #e67e22;transform:scale(1.06);`;
+  document.body.appendChild(ghost);
+  ceReorder = { fromCi, ghostEl: ghost, hoverCi: -1, offsetX: clientX - rect.left, offsetY: clientY - rect.top };
+  if (navigator.vibrate) navigator.vibrate(15);
+}
+
+// 拿起狀態下持續拖曳：浮動縮圖跟著手指，並標示目前懸停的目標格
+function updateReorderDrag(clientX, clientY) {
+  if (!ceReorder) return;
+  ceReorder.ghostEl.style.left = (clientX - ceReorder.offsetX) + 'px';
+  ceReorder.ghostEl.style.top  = (clientY - ceReorder.offsetY) + 'px';
+  let hoverCi = -1;
+  ceCells.forEach((c, i) => {
+    if (i === ceReorder.fromCi) return;
+    const r = c.cellDiv.getBoundingClientRect();
+    if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) hoverCi = i;
+  });
+  if (hoverCi !== ceReorder.hoverCi) {
+    ceCells.forEach((c, i) => { c.cellDiv.style.outline = (i === hoverCi) ? '3px solid #e67e22' : ''; });
+    ceReorder.hoverCi = hoverCi;
+  }
+}
+
+// 放開：如果放在別的格子上，交換兩格內容（含各自的裁切設定）
+function finishReorderDrag() {
+  if (!ceReorder) return;
+  const { fromCi, hoverCi, ghostEl } = ceReorder;
+  ghostEl.remove();
+  ceCells.forEach(c => { c.cellDiv.style.outline = ''; c.cellDiv.style.opacity = ''; });
+  if (hoverCi >= 0 && hoverCi !== fromCi) {
+    const p = photos[ceIdx];
+    const tmp = p.items[fromCi];
+    p.items[fromCi] = p.items[hoverCi];
+    p.items[hoverCi] = tmp;
+  }
+  ceReorder = null;
+  renderCollageEditor();
 }
 
 // 拖曳中間格線：即時調整左右比例，直接更新既有格子尺寸（不重建 DOM，才不會中斷拖曳事件）
@@ -2991,7 +3066,7 @@ function confirmAudio() {
   <div id="ce-viewport" style="position:relative;width:min(92vw,640px);aspect-ratio:16/9;background:#111;overflow:hidden;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);">
     <div id="ce-stage" style="position:absolute;left:0;top:0;width:100%;height:100%;"></div>
   </div>
-  <p style="color:#999;font-size:.85rem;text-align:center;max-width:420px;line-height:1.6;">拖曳照片可調整位置；兩張拼貼可拖曳中間格線調整比例；點右上角圖示切換「裁切／完整顯示」</p>
+  <p style="color:#999;font-size:.85rem;text-align:center;max-width:420px;line-height:1.6;">拖曳照片可調整裁切位置；長按照片再拖曳可與其他格交換位置；兩張拼貼可拖曳中間格線調整比例；點右上角圖示切換「裁切／完整顯示」</p>
   <div style="width:100%;max-width:420px;">
     <button onclick="closeCollageEditModal()" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#c0392b,#e67e22);color:#fff;cursor:pointer;font-size:1rem;font-weight:700;">✓ 完成</button>
   </div>
