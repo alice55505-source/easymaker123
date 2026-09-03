@@ -1553,7 +1553,7 @@ function getCollageLayout(n, W, H, splitRatio = 0.5) {
 }
 
 async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
-  const KB_FPS = 8, totalFrames = Math.round((p.duration || 4) * KB_FPS);
+  const KB_FPS = 24, totalFrames = Math.round((p.duration || 4) * KB_FPS); // 與主編碼幀率一致，避免縮放看起來一格一格跳動
   const frameDurUs = Math.round(1_000_000 / KB_FPS);
   const ZOOM = 0.05;
 
@@ -1612,10 +1612,10 @@ async function encodeCollage(p, ctx, canvas, encoder, W, H, startTs) {
   return ts;
 }
 
-// Ken Burns 緩慢縮放效果（照片用，8fps × 可調秒數，預設 4 秒 = 32 frames）
+// Ken Burns 緩慢縮放效果（照片用，24fps × 可調秒數，與主編碼幀率一致才不會縮放抖動）
 // 採用「模糊背景 + contain 主圖」：直式照片完整顯示，不裁切，黑邊用模糊版填滿
 async function encodeKenBurns(p, bmp, ctx, canvas, encoder, W, H, startTs, idx) {
-  const KB_FPS      = 8;
+  const KB_FPS      = 24;
   const totalFrames = Math.round((p.duration || 4) * KB_FPS);
   const frameDurUs  = Math.round(1_000_000 / KB_FPS);
   const containScale = Math.min(W / bmp.width, H / bmp.height); // 完整顯示，不裁切
